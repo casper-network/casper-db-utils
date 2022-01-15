@@ -1,0 +1,13 @@
+[package]
+name = "lmdb-utils"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.52"
+bincode = "1.3.3"
+clap = "3.0.7"
+lmdb = "0.8.0"
+thiserror = "1.0.30"
+serde = {version = "1", features = ["derive"] }
+base16 = "0.2.1"
