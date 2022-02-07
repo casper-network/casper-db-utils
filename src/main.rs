@@ -31,5 +31,12 @@ fn main() -> Result<(), ToolError> {
         .parse::<u64>()
         .unwrap();
 
-    db::run(path.into(), block_height)
+    let (deleted_headers, deleted_bodies, deleted_metas) = db::run(path.into(), block_height)?;
+
+    println!(
+        "Deleted: {} block headers, {} block bodies and {} block metas",
+        deleted_headers, deleted_bodies, deleted_metas
+    );
+
+    Ok(())
 }

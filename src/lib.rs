@@ -1,6 +1,10 @@
 //! # lmdb_utils
 //! This is a command-line utility for Casper Node operators.
 //!
+
+#[cfg(test)]
+mod test;
+
 pub mod error {
     use thiserror::Error;
 
@@ -21,7 +25,7 @@ mod block {
         pub body_hash: Vec<u8>,
         random_bit: bool,
         accumulated_seed: Vec<u8>,
-        era_end: Option<String>,
+        era_end: Option<Vec<u8>>,
         timestamp: u64,
         era_id: u64,
         height: u64,
@@ -61,7 +65,7 @@ pub mod db {
             .open(&path)
     }
 
-    pub fn run(db_path: PathBuf, block_height: u64) -> Result<(), ToolError> {
+    pub fn run(db_path: PathBuf, block_height: u64) -> Result<(u64, u64, u64), ToolError> {
         let env = get_env(db_path)?;
 
         let block_header_db = env.create_db(Some("block_header"), DatabaseFlags::default())?;
@@ -73,15 +77,9 @@ pub mod db {
 
         let deleted_bodies = delete_from_db(block_body_db, &env, body_hashes)?;
         let deleted_metas = delete_from_db(block_metadata_db, &env, header_hashes.clone())?;
+        let deleted_headers = header_hashes.len() as u64;
 
-        println!(
-            "Deleted: {} block headers, {} block bodies and {} block metas",
-            header_hashes.len(),
-            deleted_bodies,
-            deleted_metas
-        );
-
-        Ok(())
+        Ok((deleted_headers, deleted_bodies, deleted_metas))
     }
 
     fn delete_headers_and_get_hashes(

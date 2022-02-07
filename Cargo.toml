@@ -11,3 +11,8 @@ lmdb = "0.8.0"
 thiserror = "1.0.30"
 serde = {version = "1", features = ["derive"] }
 base16 = "0.2.1"
+
+[dev-dependencies]
+retrieve-state = {git = "https://github.com/casper-network/casper-node.git", branch = "dev"}
+casper-node = {git = "https://github.com/casper-network/casper-node.git", branch = "dev"}
+tokio = {version = "*", features = ["test-util"]}
