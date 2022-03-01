@@ -1,2 +1,2 @@
-# lmdb-utils
-Utilities to perform operations on the lmdb databases for a casper-node.
+# casper-db-utils
+Utilities to perform operations casper-node databases.
