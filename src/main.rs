@@ -1,6 +1,6 @@
 use clap::{App, Arg};
 
-use lmdb_utils::{db, error::ToolError};
+use casper_db_utils::{db, error::ToolError};
 
 fn main() -> Result<(), ToolError> {
     let matches = App::new("lmdb-util")
