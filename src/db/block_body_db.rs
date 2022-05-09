@@ -1,6 +1,8 @@
+use std::result::Result;
+
 use casper_node::types::BlockBody;
 
-use crate::db::{Database, Result};
+use crate::db::{Database, DeserializationError};
 
 pub struct BlockBodyDatabase;
 
@@ -15,7 +17,7 @@ impl Database for BlockBodyDatabase {
         "block_body"
     }
 
-    fn parse_element(bytes: &[u8]) -> Result<()> {
+    fn parse_element(bytes: &[u8]) -> Result<(), DeserializationError> {
         let _: BlockBody = bincode::deserialize(bytes)?;
         Ok(())
     }

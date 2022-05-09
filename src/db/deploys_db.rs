@@ -1,6 +1,8 @@
+use std::result::Result;
+
 use casper_node::types::Deploy;
 
-use crate::db::{Database, Result};
+use crate::db::{Database, DeserializationError};
 
 pub struct DeployDatabase;
 
@@ -15,7 +17,7 @@ impl Database for DeployDatabase {
         "deploys"
     }
 
-    fn parse_element(bytes: &[u8]) -> Result<()> {
+    fn parse_element(bytes: &[u8]) -> Result<(), DeserializationError> {
         let _: Deploy = bincode::deserialize(bytes)?;
         Ok(())
     }

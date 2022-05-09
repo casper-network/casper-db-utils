@@ -1,6 +1,8 @@
+use std::result::Result;
+
 use casper_types::Transfer;
 
-use crate::db::{Database, Result};
+use crate::db::{Database, DeserializationError};
 
 pub struct TransferDatabase;
 
@@ -15,7 +17,7 @@ impl Database for TransferDatabase {
         "transfer"
     }
 
-    fn parse_element(bytes: &[u8]) -> Result<()> {
+    fn parse_element(bytes: &[u8]) -> Result<(), DeserializationError> {
         let _: Vec<Transfer> = bincode::deserialize(bytes)?;
         Ok(())
     }

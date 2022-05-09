@@ -24,24 +24,38 @@ pub use state_store_db::StateStoreDatabase;
 pub use transfer_db::TransferDatabase;
 pub use transfer_hashes_db::TransferHashesDatabase;
 
-use std::path::PathBuf;
+use std::{io::Write, path::PathBuf, result::Result};
 
 use lmdb::{Cursor, Environment, EnvironmentFlags, RoCursor, Transaction};
 use thiserror::Error;
 
+const ENTRY_LOG_INTERVAL: usize = 100_000;
+const LINE_CLEAR_STR: &str = "\r                                               \r";
+
 #[derive(Debug, Error)]
-pub enum Error {
-    #[error("failed database operation")]
-    LmbdError(#[from] lmdb::Error),
+pub enum DeserializationError {
     #[error("failed parsing struct with bincode")]
     BincodeError(#[from] bincode::Error),
     #[error("failed parsing struct with bytesrepr")]
     BytesreprError,
 }
 
-pub(crate) type Result<T> = std::result::Result<T, Error>;
+#[derive(Debug, Error)]
+pub enum Error {
+    Parsing(usize, DeserializationError),
+    Database(#[from] lmdb::Error),
+}
 
-pub fn db_env(path: PathBuf) -> Result<Environment> {
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Database(e) => write!(f, "Error operating the database: {}", e),
+            Self::Parsing(idx, inner) => write!(f, "Error parsing element {}: {}", idx, inner),
+        }
+    }
+}
+
+pub fn db_env(path: PathBuf) -> Result<Environment, Error> {
     let env = Environment::new()
         .set_flags(
             EnvironmentFlags::NO_SUB_DIR
@@ -53,59 +67,86 @@ pub fn db_env(path: PathBuf) -> Result<Environment> {
     Ok(env)
 }
 
-#[allow(unused)]
-pub enum Databases {
-    BlockHeader,
-    BlockBodyV1,
-    BlockBodyV2,
-    DeployHashes,
-    TransferHashes,
-    Proposer,
-    BlockMetadata,
-    Deploy,
-    DeployMetadata,
-    Transfer,
-    StateStore,
-    FinalizedApprovals,
-}
-
-impl std::fmt::Display for Databases {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::BlockHeader => write!(f, "block_header"),
-            Self::BlockBodyV1 => write!(f, "block_body"),
-            Self::BlockBodyV2 => write!(f, "block_body_merkle"),
-            Self::DeployHashes => write!(f, "deploy_hashes"),
-            Self::TransferHashes => write!(f, "transfer_hashes"),
-            Self::Proposer => write!(f, "proposers"),
-            Self::BlockMetadata => write!(f, "block_metadata"),
-            Self::Deploy => write!(f, "deploys"),
-            Self::DeployMetadata => write!(f, "deploy_metadata"),
-            Self::Transfer => write!(f, "transfer"),
-            Self::StateStore => write!(f, "state_store"),
-            Self::FinalizedApprovals => write!(f, "finalized_approvals"),
-        }
-    }
-}
-
 pub trait Database {
     fn db_name() -> &'static str;
 
-    fn parse_element(bytes: &[u8]) -> Result<()>;
+    fn parse_element(bytes: &[u8]) -> Result<(), DeserializationError>;
 
-    fn parse_elements(mut cursor: RoCursor) -> Result<()> {
-        for (_raw_key, raw_val) in cursor.iter() {
-            Self::parse_element(raw_val)?;
+    // TODO: Implement iterating with closure.
+    // TODO: Use log crate.
+    fn parse_elements(mut cursor: RoCursor, failfast: bool) -> Result<(), Error> {
+        let mut stdout = std::io::stdout();
+        let mut error_buffer = String::new();
+        for (idx, (_raw_key, raw_val)) in cursor.iter().enumerate() {
+            if let Err(e) =
+                Self::parse_element(raw_val).map_err(|parsing_err| Error::Parsing(idx, parsing_err))
+            {
+                if failfast {
+                    return Err(e);
+                } else {
+                    error_buffer.push_str(&format!("{} database: {}\n", Self::db_name(), e));
+                }
+            }
+            if idx % ENTRY_LOG_INTERVAL == 0 {
+                print!("\rParsed {} entries...", idx);
+                let _ = stdout.flush();
+            }
+        }
+        print!("{}", LINE_CLEAR_STR);
+        println!("Parsing complete.");
+        if failfast && !error_buffer.is_empty() {
+            println!("Errors:\n{}", error_buffer);
         }
         Ok(())
     }
 
-    fn check_db(env: &Environment) -> Result<()> {
+    // TODO: Use log crate.
+    fn parse_elements_starting_with(
+        mut cursor: RoCursor,
+        failfast: bool,
+        start_at: usize,
+    ) -> Result<(), Error> {
+        println!("Skipping {} entries.", start_at);
+        let mut stdout = std::io::stdout();
+        let mut error_buffer = String::new();
+        for (idx, (_raw_key, raw_val)) in cursor.iter().skip(start_at).enumerate() {
+            if let Err(e) =
+                Self::parse_element(raw_val).map_err(|parsing_err| Error::Parsing(idx, parsing_err))
+            {
+                if failfast {
+                    return Err(e);
+                } else {
+                    error_buffer.push_str(&format!("{} database: {}\n", Self::db_name(), e));
+                }
+            }
+            if idx % ENTRY_LOG_INTERVAL == 0 {
+                print!("\rParsed {} entries...", idx);
+                let _ = stdout.flush();
+            }
+        }
+        print!("{}", LINE_CLEAR_STR);
+        println!("Parsing complete.");
+        // TODO: Move this to a log print instead of stdout.
+        // Because this prints after iterating through all entries,
+        // there is a chance the process exits without printing this,
+        // therefore we need a separate logger.
+        if failfast && !error_buffer.is_empty() {
+            println!("Errors:\n{}", error_buffer);
+        }
+        Ok(())
+    }
+
+    // TODO: Use log crate.
+    fn check_db(env: &Environment, failfast: bool, start_at: usize) -> Result<(), Error> {
         println!("Checking {} database.", Self::db_name());
         let txn = env.begin_ro_txn()?;
         let db = unsafe { txn.open_db(Some(Self::db_name()))? };
         if let Ok(cursor) = txn.open_ro_cursor(db) {
-            Self::parse_elements(cursor)?;
+            if start_at > 0 {
+                Self::parse_elements_starting_with(cursor, failfast, start_at)?;
+            } else {
+                Self::parse_elements(cursor, failfast)?;
+            }
         }
         Ok(())
     }

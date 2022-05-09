@@ -1,6 +1,8 @@
+use std::result::Result;
+
 use casper_node::types::BlockHeader;
 
-use crate::db::{Database, Result};
+use crate::db::{Database, DeserializationError};
 
 pub struct BlockHeaderDatabase;
 
@@ -15,7 +17,7 @@ impl Database for BlockHeaderDatabase {
         "block_header"
     }
 
-    fn parse_element(bytes: &[u8]) -> Result<()> {
+    fn parse_element(bytes: &[u8]) -> Result<(), DeserializationError> {
         let _: BlockHeader = bincode::deserialize(bytes)?;
         Ok(())
     }

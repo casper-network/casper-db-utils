@@ -1,6 +1,8 @@
+use std::result::Result;
+
 use casper_types::{bytesrepr::FromBytes, PublicKey};
 
-use crate::db::{Database, Error, Result};
+use crate::db::{Database, DeserializationError};
 
 pub struct ProposerDatabase;
 
@@ -15,9 +17,9 @@ impl Database for ProposerDatabase {
         "proposers"
     }
 
-    fn parse_element(bytes: &[u8]) -> Result<()> {
+    fn parse_element(bytes: &[u8]) -> Result<(), DeserializationError> {
         let _: PublicKey = FromBytes::from_bytes(bytes)
-            .map_err(|_| Error::BytesreprError)?
+            .map_err(|_| DeserializationError::BytesreprError)?
             .0;
         Ok(())
     }

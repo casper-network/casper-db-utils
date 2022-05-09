@@ -1,6 +1,8 @@
+use std::result::Result;
+
 use casper_node::types::DeployMetadata;
 
-use crate::db::{Database, Result};
+use crate::db::{Database, DeserializationError};
 
 pub struct DeployMetadataDatabase;
 
@@ -15,7 +17,7 @@ impl Database for DeployMetadataDatabase {
         "deploy_metadata"
     }
 
-    fn parse_element(bytes: &[u8]) -> Result<()> {
+    fn parse_element(bytes: &[u8]) -> Result<(), DeserializationError> {
         let _: DeployMetadata = bincode::deserialize(bytes)?;
         Ok(())
     }

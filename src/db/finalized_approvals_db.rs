@@ -1,6 +1,8 @@
+use std::result::Result;
+
 use casper_node::types::FinalizedApprovals;
 
-use crate::db::{Database, Result};
+use crate::db::{Database, DeserializationError};
 
 pub struct FinalizedApprovalsDatabase;
 
@@ -15,7 +17,7 @@ impl Database for FinalizedApprovalsDatabase {
         "finalized_approvals"
     }
 
-    fn parse_element(bytes: &[u8]) -> Result<()> {
+    fn parse_element(bytes: &[u8]) -> Result<(), DeserializationError> {
         let _: FinalizedApprovals = bincode::deserialize(bytes)?;
         Ok(())
     }

@@ -1,7 +1,9 @@
+use std::result::Result;
+
 use casper_hashing::Digest;
 use casper_types::bytesrepr::FromBytes;
 
-use crate::db::{Database, Error, Result};
+use crate::db::{Database, DeserializationError};
 
 pub struct BlockBodyMerkleDatabase;
 
@@ -16,9 +18,9 @@ impl Database for BlockBodyMerkleDatabase {
         "block_body_merkle"
     }
 
-    fn parse_element(bytes: &[u8]) -> Result<()> {
+    fn parse_element(bytes: &[u8]) -> Result<(), DeserializationError> {
         let _: (Digest, Digest) = FromBytes::from_bytes(bytes)
-            .map_err(|_| Error::BytesreprError)?
+            .map_err(|_| DeserializationError::BytesreprError)?
             .0;
         Ok(())
     }

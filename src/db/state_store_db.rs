@@ -1,6 +1,8 @@
+use std::result::Result;
+
 use casper_types::bytesrepr::FromBytes;
 
-use crate::db::{Database, Error, Result};
+use crate::db::{Database, DeserializationError};
 
 pub struct StateStoreDatabase;
 
@@ -15,9 +17,9 @@ impl Database for StateStoreDatabase {
         "state_store"
     }
 
-    fn parse_element(bytes: &[u8]) -> Result<()> {
+    fn parse_element(bytes: &[u8]) -> Result<(), DeserializationError> {
         let _: u64 = FromBytes::from_bytes(bytes)
-            .map_err(|_| Error::BytesreprError)?
+            .map_err(|_| DeserializationError::BytesreprError)?
             .0;
         Ok(())
     }
