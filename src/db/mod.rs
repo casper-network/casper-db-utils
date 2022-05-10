@@ -42,6 +42,7 @@ pub enum DeserializationError {
 
 #[derive(Debug, Error)]
 pub enum Error {
+    Cumulated(Vec<Self>),
     Parsing(usize, DeserializationError),
     Database(#[from] lmdb::Error),
 }
@@ -51,6 +52,13 @@ impl std::fmt::Display for Error {
         match self {
             Self::Database(e) => write!(f, "Error operating the database: {}", e),
             Self::Parsing(idx, inner) => write!(f, "Error parsing element {}: {}", idx, inner),
+            Self::Cumulated(v) => {
+                writeln!(f, "Errors caught:")?;
+                for e in v {
+                    writeln!(f, "{}", e)?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -76,7 +84,8 @@ pub trait Database {
     // TODO: Use log crate.
     fn parse_elements(mut cursor: RoCursor, failfast: bool) -> Result<(), Error> {
         let mut stdout = std::io::stdout();
-        let mut error_buffer = String::new();
+        // let mut error_buffer = String::new();
+        let mut error_buffer = vec![];
         for (idx, (_raw_key, raw_val)) in cursor.iter().enumerate() {
             if let Err(e) =
                 Self::parse_element(raw_val).map_err(|parsing_err| Error::Parsing(idx, parsing_err))
@@ -84,7 +93,8 @@ pub trait Database {
                 if failfast {
                     return Err(e);
                 } else {
-                    error_buffer.push_str(&format!("{} database: {}\n", Self::db_name(), e));
+                    // error_buffer.push_str(&format!("{} database: {}\n", Self::db_name(), e));
+                    error_buffer.push(e);
                 }
             }
             if idx % ENTRY_LOG_INTERVAL == 0 {
@@ -94,8 +104,9 @@ pub trait Database {
         }
         print!("{}", LINE_CLEAR_STR);
         println!("Parsing complete.");
-        if failfast && !error_buffer.is_empty() {
-            println!("Errors:\n{}", error_buffer);
+        if !failfast && !error_buffer.is_empty() {
+            // println!("Errors:\n{}", error_buffer);
+            return Err(Error::Cumulated(error_buffer));
         }
         Ok(())
     }
@@ -108,7 +119,8 @@ pub trait Database {
     ) -> Result<(), Error> {
         println!("Skipping {} entries.", start_at);
         let mut stdout = std::io::stdout();
-        let mut error_buffer = String::new();
+        // let mut error_buffer = String::new();
+        let mut error_buffer = vec![];
         for (idx, (_raw_key, raw_val)) in cursor.iter().skip(start_at).enumerate() {
             if let Err(e) =
                 Self::parse_element(raw_val).map_err(|parsing_err| Error::Parsing(idx, parsing_err))
@@ -116,7 +128,8 @@ pub trait Database {
                 if failfast {
                     return Err(e);
                 } else {
-                    error_buffer.push_str(&format!("{} database: {}\n", Self::db_name(), e));
+                    // error_buffer.push_str(&format!("{} database: {}\n", Self::db_name(), e));
+                    error_buffer.push(e);
                 }
             }
             if idx % ENTRY_LOG_INTERVAL == 0 {
@@ -130,8 +143,9 @@ pub trait Database {
         // Because this prints after iterating through all entries,
         // there is a chance the process exits without printing this,
         // therefore we need a separate logger.
-        if failfast && !error_buffer.is_empty() {
-            println!("Errors:\n{}", error_buffer);
+        if !failfast && !error_buffer.is_empty() {
+            // println!("Errors:\n{}", error_buffer);
+            return Err(Error::Cumulated(error_buffer));
         }
         Ok(())
     }
