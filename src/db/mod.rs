@@ -8,6 +8,8 @@ mod deploys_db;
 mod finalized_approvals_db;
 mod proposers_db;
 mod state_store_db;
+#[cfg(test)]
+mod tests;
 mod transfer_db;
 mod transfer_hashes_db;
 
