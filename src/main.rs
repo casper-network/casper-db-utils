@@ -1,6 +1,10 @@
 mod db;
+mod logging;
+
+use std::{fs::OpenOptions, process::exit};
 
 use clap::{Arg, Command};
+use log::{error};
 
 use db::{
     db_env, BlockBodyDatabase, BlockBodyMerkleDatabase, BlockHeaderDatabase, BlockMetadataDatabase,
@@ -51,7 +55,31 @@ fn main() {
                     "Entry index from which parsing will start. Requires \"--specific\" parameter to be set.",
                 ),
         )
+        .arg(
+            Arg::new("logging")
+                .short('l')
+                .long("logging")
+                .takes_value(true)
+                .value_name("LOGFILE_PATH")
+                .help(
+                    "Path to file where program will dump log messages.",
+                ),
+        )
         .get_matches();
+
+    // Initialize logger.
+    matches.value_of("logging").map_or_else(
+        || logging::init_term_logger().expect("Couldn't initialize terminal logger"),
+        |path| {
+            let logfile = OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(path)
+                .expect("Couldn't open logfile");
+            let line_writer = std::io::LineWriter::new(logfile);
+            logging::init_write_logger(line_writer).expect("Couldn't initialize logger to file");
+        },
+    );
 
     let path = matches.value_of("db-path").unwrap();
     let failfast = !matches.is_present("no-failfast");
@@ -62,33 +90,29 @@ fn main() {
             .unwrap()
             .parse()
             .expect("Value of \"--start-at\" must be an integer.");
-        match db_name.trim() {
-            "block_body" => BlockBodyDatabase::check_db(&env, failfast, start_at)
-                .expect("Block Body DB check failed"),
-            "block_body_merkle" => BlockBodyMerkleDatabase::check_db(&env, failfast, start_at)
-                .expect("Block Body Merkle DB check failed"),
-            "block_header" => BlockHeaderDatabase::check_db(&env, failfast, start_at)
-                .expect("Block Header DB check failed"),
-            "block_metadata" => BlockMetadataDatabase::check_db(&env, failfast, start_at)
-                .expect("Block Metadata DB check failed"),
-            "deploy_hashes" => DeployHashesDatabase::check_db(&env, failfast, start_at)
-                .expect("Deploy Hashes DB check failed"),
-            "deploy_metadata" => DeployMetadataDatabase::check_db(&env, failfast, start_at)
-                .expect("Deploy Metadata DB check failed"),
-            "deploys" => {
-                DeployDatabase::check_db(&env, failfast, start_at).expect("Deploy DB check failed")
-            }
-            "finalized_approvals" => FinalizedApprovalsDatabase::check_db(&env, failfast, start_at)
-                .expect("Finalized Approvals DB check failed"),
-            "proposers" => ProposerDatabase::check_db(&env, failfast, start_at)
-                .expect("Proposer DB check failed"),
-            "state_store" => StateStoreDatabase::check_db(&env, failfast, start_at)
-                .expect("State Store DB check failed"),
-            "transfer" => TransferDatabase::check_db(&env, failfast, start_at)
-                .expect("Transfer DB check failed"),
-            "transfer_hashes" => TransferHashesDatabase::check_db(&env, failfast, start_at)
-                .expect("Transfer Hashes DB check failed"),
+        let res = match db_name.trim() {
+            "block_body" => BlockBodyDatabase::check_db(&env, failfast, start_at),
+            "block_body_merkle" => BlockBodyMerkleDatabase::check_db(&env, failfast, start_at),
+            "block_header" => BlockHeaderDatabase::check_db(&env, failfast, start_at),
+            "block_metadata" => BlockMetadataDatabase::check_db(&env, failfast, start_at),
+            "deploy_hashes" => DeployHashesDatabase::check_db(&env, failfast, start_at),
+            "deploy_metadata" => DeployMetadataDatabase::check_db(&env, failfast, start_at),
+            "deploys" => DeployDatabase::check_db(&env, failfast, start_at),
+            "finalized_approvals" => FinalizedApprovalsDatabase::check_db(&env, failfast, start_at),
+            "proposers" => ProposerDatabase::check_db(&env, failfast, start_at),
+            "state_store" => StateStoreDatabase::check_db(&env, failfast, start_at),
+            "transfer" => TransferDatabase::check_db(&env, failfast, start_at),
+            "transfer_hashes" => TransferHashesDatabase::check_db(&env, failfast, start_at),
             _ => panic!("Database {} not found.", db_name),
+        };
+        match res {
+            Ok(()) => {
+                exit(0);
+            }
+            Err(e) => {
+                error!("Database {} check failed. {}", db_name, e);
+                exit(128);
+            }
         }
     } else {
         let start_at = 0;
