@@ -5,7 +5,7 @@ use rand::{self, prelude::ThreadRng, Rng, RngCore};
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 
-use crate::{db::DeserializationError, Database};
+use super::{Database, DeserializationError};
 
 fn create_test_db(name: Option<&str>) -> (Environment, LmdbDatabase) {
     let tmp_file = NamedTempFile::new().unwrap();
