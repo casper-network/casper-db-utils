@@ -1,0 +1,47 @@
+---
+name: ci-casper-db-utils
+
+on:
+  push:
+    branches: [master]
+
+  pull_request:
+    branches: [master]
+
+jobs:
+  build_and_test:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+          components: rustfmt, clippy
+
+      - name: Fmt
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+          args: -- --check
+
+      - name: Audit
+        uses: actions-rs/cargo@v1
+        with:
+          command: audit
+          args: --deny warnings
+
+      - name: Clippy
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
+          args: --all-targets -- -D warnings
+
+      - name: Test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
