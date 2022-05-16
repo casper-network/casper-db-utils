@@ -146,7 +146,7 @@ impl Database for MockDb {
 }
 
 #[test]
-fn test_mock_ser_deser_sanity() {
+fn sanity_check_ser_deser() {
     let mut rng = rand::thread_rng();
     let original = MockStruct::random(&mut rng);
     let ser = bincode::serialize(&original).expect("couldn't serialize");
@@ -161,7 +161,7 @@ fn test_mock_ser_deser_sanity() {
 }
 
 #[test]
-fn test_check_db() {
+fn good_db_should_pass_check() {
     let (env, db) = create_test_db(Some(MockDb::db_name()));
     populate_db(&env, &db);
 
@@ -172,7 +172,7 @@ fn test_check_db() {
 }
 
 #[test]
-fn test_check_db_faulty() {
+fn bad_db_should_fail_check() {
     let (env, db) = create_test_db(Some(MockDb::db_name()));
     populate_faulty_db(&env, &db);
 

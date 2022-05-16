@@ -1,13 +1,15 @@
-use std::result::Result;
-
 use casper_node::types::DeployMetadata;
+use std::{
+    fmt::{Display, Formatter, Result as FormatterResult},
+    result::Result,
+};
 
 use crate::db::{Database, DeserializationError};
 
 pub struct DeployMetadataDatabase;
 
-impl std::fmt::Display for DeployMetadataDatabase {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for DeployMetadataDatabase {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatterResult {
         write!(f, "deploy_metadata")
     }
 }

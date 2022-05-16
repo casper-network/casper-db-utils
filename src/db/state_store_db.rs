@@ -1,4 +1,7 @@
-use std::result::Result;
+use std::{
+    fmt::{Display, Formatter, Result as FormatterResult},
+    result::Result,
+};
 
 use casper_types::bytesrepr::FromBytes;
 
@@ -6,8 +9,8 @@ use crate::db::{Database, DeserializationError};
 
 pub struct StateStoreDatabase;
 
-impl std::fmt::Display for StateStoreDatabase {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for StateStoreDatabase {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatterResult {
         write!(f, "state_store")
     }
 }
@@ -18,9 +21,7 @@ impl Database for StateStoreDatabase {
     }
 
     fn parse_element(bytes: &[u8]) -> Result<(), DeserializationError> {
-        let _: u64 = FromBytes::from_bytes(bytes)
-            .map_err(|_| DeserializationError::BytesreprError)?
-            .0;
+        let _: u64 = FromBytes::from_bytes(bytes)?.0;
         Ok(())
     }
 }

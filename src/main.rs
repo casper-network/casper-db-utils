@@ -7,35 +7,42 @@ use std::{fs::OpenOptions, process::exit};
 use clap::{Arg, Command};
 use log::error;
 
+const CHECK: &str = "check";
+const DB_PATH: &str = "db-path";
+const LOGGING: &str = "logging";
+const NO_FAILFAST: &str = "no-failfast";
+const SPECIFIC: &str = "specific";
+const START_AT: &str = "start-at";
+
 fn main() {
     let matches = Command::new("casper-db-utils")
         .arg_required_else_help(true)
         .about("casper-node database utils.")
         .subcommand(
-            Command::new("check")
+            Command::new(CHECK)
                 .about("Checks validity of entries in a storage database through ensuring deserialization is successful.")
                 .arg(
-                    Arg::new("no-failfast")
+                    Arg::new(NO_FAILFAST)
                         .short('f')
-                        .long("no-failfast")
+                        .long(NO_FAILFAST)
                         .takes_value(false)
                         .help(
                             "Program will not terminate when failing to parse an element in the database.",
                         ),
                 )
                 .arg(
-                    Arg::new("db-path")
+                    Arg::new(DB_PATH)
                         .required(true)
                         .short('d')
-                        .long("db-path")
+                        .long(DB_PATH)
                         .takes_value(true)
                         .value_name("DB_PATH")
                         .help("Path to the storage.lmdb file."),
                 )
                 .arg(
-                    Arg::new("specific")
+                    Arg::new(SPECIFIC)
                         .short('s')
-                        .long("specific")
+                        .long(SPECIFIC)
                         .takes_value(true)
                         .value_name("DB_NAME")
                         .help(
@@ -43,12 +50,12 @@ fn main() {
                         ),
                 )
                 .arg(
-                    Arg::new("start-at")
+                    Arg::new(START_AT)
                         .short('i')
-                        .long("start-at")
+                        .long(START_AT)
                         .takes_value(true)
                         .value_name("ENTRY_INDEX")
-                        .requires("specific")
+                        .requires(SPECIFIC)
                         .default_value("0")
                         .help(
                             "Entry index from which parsing will start. Requires \"--specific\" parameter to be set.",
@@ -56,9 +63,9 @@ fn main() {
                 )
         )
         .arg(
-            Arg::new("logging")
+            Arg::new(LOGGING)
                 .short('l')
-                .long("logging")
+                .long(LOGGING)
                 .takes_value(true)
                 .value_name("LOGFILE_PATH")
                 .help(
@@ -68,7 +75,7 @@ fn main() {
         .get_matches();
 
     // Initialize logger.
-    matches.value_of("logging").map_or_else(
+    matches.value_of(LOGGING).map_or_else(
         || logging::init_term_logger().expect("Couldn't initialize terminal logger"),
         |path| {
             let logfile = OpenOptions::new()
@@ -81,27 +88,24 @@ fn main() {
         },
     );
 
-    match matches.subcommand() {
-        Some(("check", sub_m)) => {
-            let path = sub_m.value_of("db-path").unwrap();
-            let failfast = !sub_m.is_present("no-failfast");
-            let specific = sub_m.value_of("specific");
-            let start_at: usize = sub_m
-                .value_of("start-at")
-                .unwrap()
-                .parse()
-                .expect("Value of \"--start-at\" must be an integer.");
+    if let Some((CHECK, sub_m)) = matches.subcommand() {
+        let path = sub_m.value_of(DB_PATH).unwrap();
+        let failfast = !sub_m.is_present(NO_FAILFAST);
+        let specific = sub_m.value_of(SPECIFIC);
+        let start_at: usize = sub_m
+            .value_of(START_AT)
+            .unwrap()
+            .parse()
+            .expect("Value of \"--start-at\" must be an integer.");
 
-            match check::check_db(path, failfast, specific, start_at) {
-                Ok(()) => {
-                    exit(0);
-                }
-                Err(e) => {
-                    error!("Database check failed. {}", e);
-                    exit(128);
-                }
+        match check::check_db(path, failfast, specific, start_at) {
+            Ok(()) => {
+                exit(0);
+            }
+            Err(e) => {
+                error!("Database check failed. {}", e);
+                exit(128);
             }
         }
-        _ => {}
     }
 }

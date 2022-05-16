@@ -1,4 +1,7 @@
-use std::result::Result;
+use std::{
+    fmt::{Display, Formatter, Result as FormatterResult},
+    result::Result,
+};
 
 use casper_node::types::BlockBody;
 
@@ -6,8 +9,8 @@ use crate::db::{Database, DeserializationError};
 
 pub struct BlockBodyDatabase;
 
-impl std::fmt::Display for BlockBodyDatabase {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for BlockBodyDatabase {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatterResult {
         write!(f, "block_body")
     }
 }

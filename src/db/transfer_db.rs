@@ -1,4 +1,7 @@
-use std::result::Result;
+use std::{
+    fmt::{Display, Formatter, Result as FormatterResult},
+    result::Result,
+};
 
 use casper_types::Transfer;
 
@@ -6,8 +9,8 @@ use crate::db::{Database, DeserializationError};
 
 pub struct TransferDatabase;
 
-impl std::fmt::Display for TransferDatabase {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for TransferDatabase {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatterResult {
         write!(f, "transfer")
     }
 }

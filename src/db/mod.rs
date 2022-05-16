@@ -26,38 +26,56 @@ pub use state_store_db::StateStoreDatabase;
 pub use transfer_db::TransferDatabase;
 pub use transfer_hashes_db::TransferHashesDatabase;
 
-use std::{io::Write, path::PathBuf, result::Result};
+use std::{
+    fmt::{Display, Formatter, Result as FormatterResult},
+    path::PathBuf,
+    result::Result,
+};
 
+use bincode::Error as BincodeError;
 use lmdb::{Cursor, Environment, EnvironmentFlags, RoCursor, Transaction};
 use log::info;
 use thiserror::Error;
 
+use casper_types::bytesrepr::Error as BytesreprError;
+
 const ENTRY_LOG_INTERVAL: usize = 100_000;
+const MAX_DB_READERS: u32 = 100;
 
 #[derive(Debug, Error)]
 pub enum DeserializationError {
     #[error("failed parsing struct with bincode")]
-    BincodeError(#[from] bincode::Error),
+    BincodeError(#[from] BincodeError),
     #[error("failed parsing struct with bytesrepr")]
-    BytesreprError,
+    BytesreprError(String),
 }
 
+impl From<BytesreprError> for DeserializationError {
+    fn from(error: BytesreprError) -> Self {
+        Self::BytesreprError(error.to_string())
+    }
+}
+
+/// Errors encountered when operating on the storage database.
 #[derive(Debug, Error)]
 pub enum Error {
-    Cumulated(Vec<Self>),
+    /// Errors accumulated when parsing a database with "--no-failfast".
+    Accumulated(Vec<Self>),
+    /// Parsing error on entry at index in the database.
     Parsing(usize, DeserializationError),
+    /// Database operation error.
     Database(#[from] lmdb::Error),
 }
 
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FormatterResult {
         match self {
             Self::Database(e) => write!(f, "Error operating the database: {}", e),
             Self::Parsing(idx, inner) => write!(f, "Error parsing element {}: {}", idx, inner),
-            Self::Cumulated(v) => {
+            Self::Accumulated(accumulated_errors) => {
                 writeln!(f, "Errors caught:")?;
-                for e in v {
-                    writeln!(f, "{}", e)?;
+                for error in accumulated_errors {
+                    writeln!(f, "{}", error)?;
                 }
                 Ok(())
             }
@@ -72,7 +90,7 @@ pub fn db_env(path: PathBuf) -> Result<Environment, Error> {
                 | EnvironmentFlags::NO_TLS
                 | EnvironmentFlags::NO_READAHEAD,
         )
-        .set_max_dbs(12)
+        .set_max_dbs(MAX_DB_READERS)
         .open(&path)?;
     Ok(env)
 }
@@ -80,47 +98,14 @@ pub fn db_env(path: PathBuf) -> Result<Environment, Error> {
 pub trait Database {
     fn db_name() -> &'static str;
 
+    /// Parses a value of an entry in a database.
     fn parse_element(bytes: &[u8]) -> Result<(), DeserializationError>;
 
-    // TODO: Implement iterating with closure.
-    // TODO: Use log crate.
-    fn parse_elements(mut cursor: RoCursor, failfast: bool) -> Result<(), Error> {
-        let mut stdout = std::io::stdout();
-        // let mut error_buffer = String::new();
-        let mut error_buffer = vec![];
-        for (idx, (_raw_key, raw_val)) in cursor.iter().enumerate() {
-            if let Err(e) =
-                Self::parse_element(raw_val).map_err(|parsing_err| Error::Parsing(idx, parsing_err))
-            {
-                if failfast {
-                    return Err(e);
-                } else {
-                    // error_buffer.push_str(&format!("{} database: {}\n", Self::db_name(), e));
-                    error_buffer.push(e);
-                }
-            }
-            if idx % ENTRY_LOG_INTERVAL == 0 {
-                info!("Parsed {} entries...", idx);
-                let _ = stdout.flush();
-            }
+    /// Parses all elements of a database by trying to deserialize them sequentially.
+    fn parse_elements(mut cursor: RoCursor, failfast: bool, start_at: usize) -> Result<(), Error> {
+        if start_at > 0 {
+            info!("Skipping {} entries.", start_at);
         }
-        info!("Parsing complete.");
-        if !failfast && !error_buffer.is_empty() {
-            // info!("Errors:\n{}", error_buffer);
-            return Err(Error::Cumulated(error_buffer));
-        }
-        Ok(())
-    }
-
-    // TODO: Use log crate.
-    fn parse_elements_starting_with(
-        mut cursor: RoCursor,
-        failfast: bool,
-        start_at: usize,
-    ) -> Result<(), Error> {
-        info!("Skipping {} entries.", start_at);
-        let mut stdout = std::io::stdout();
-        // let mut error_buffer = String::new();
         let mut error_buffer = vec![];
         for (idx, (_raw_key, raw_val)) in cursor.iter().skip(start_at).enumerate() {
             if let Err(e) =
@@ -129,49 +114,28 @@ pub trait Database {
                 if failfast {
                     return Err(e);
                 } else {
-                    // error_buffer.push_str(&format!("{} database: {}\n", Self::db_name(), e));
                     error_buffer.push(e);
                 }
             }
             if idx % ENTRY_LOG_INTERVAL == 0 {
                 info!("Parsed {} entries...", idx);
-                let _ = stdout.flush();
             }
         }
         info!("Parsing complete.");
-        // TODO: Move this to a log print instead of stdout.
-        // Because this prints after iterating through all entries,
-        // there is a chance the process exits without printing this,
-        // therefore we need a separate logger.
         if !failfast && !error_buffer.is_empty() {
-            // info!("Errors:\n{}", error_buffer);
-            return Err(Error::Cumulated(error_buffer));
+            return Err(Error::Accumulated(error_buffer));
         }
         Ok(())
     }
 
-    // TODO: Use log crate.
+    /// Validates the database by ensuring every value of an entry can be parsed.
     fn check_db(env: &Environment, failfast: bool, start_at: usize) -> Result<(), Error> {
-        // use lmdb_sys::{mdb_stat, MDB_stat, MDB_SUCCESS};
-        // struct Stat(pub MDB_stat);
-
         info!("Checking {} database.", Self::db_name());
         let txn = env.begin_ro_txn()?;
         let db = unsafe { txn.open_db(Some(Self::db_name()))? };
 
-        // let entries_count = unsafe {
-        //     let mut stat = Stat(std::mem::zeroed());
-        //     assert_eq!(mdb_stat(txn.txn(), db.dbi(), &mut stat.0), MDB_SUCCESS);
-        //     stat.0.ms_entries
-        // };
-        // info!("GOT {} ENTRIES", entries_count);
-
         if let Ok(cursor) = txn.open_ro_cursor(db) {
-            if start_at > 0 {
-                Self::parse_elements_starting_with(cursor, failfast, start_at)?;
-            } else {
-                Self::parse_elements(cursor, failfast)?;
-            }
+            Self::parse_elements(cursor, failfast, start_at)?;
         }
         Ok(())
     }
