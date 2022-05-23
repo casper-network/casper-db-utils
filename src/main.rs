@@ -1,6 +1,7 @@
 mod check;
 mod db;
 mod logging;
+mod trie_compact;
 
 use std::{fs::OpenOptions, process::exit};
 
@@ -9,10 +10,16 @@ use log::error;
 
 const CHECK: &str = "check";
 const DB_PATH: &str = "db-path";
-const LOGGING: &str = "logging";
 const NO_FAILFAST: &str = "no-failfast";
 const SPECIFIC: &str = "specific";
 const START_AT: &str = "start-at";
+
+const COMPACT_TRIE: &str = "compact-trie";
+const STORAGE_PATH: &str = "storage-path";
+const SOURCE_TRIE_STORE_PATH: &str = "src-trie";
+const DESTINATION_TRIE_STORE_PATH: &str = "dest-trie";
+
+const LOGGING: &str = "logging";
 
 fn main() {
     let matches = Command::new("casper-db-utils")
@@ -62,6 +69,37 @@ fn main() {
                         ),
                 )
         )
+        .subcommand(
+            Command::new(COMPACT_TRIE)
+                .about("Writes a compacted version of the block entries in the source trie store to the destination.")
+                .arg(
+                    Arg::new(STORAGE_PATH)
+                        .required(true)
+                        .short('b')
+                        .long(STORAGE_PATH)
+                        .takes_value(true)
+                        .value_name("STORAGE_PATH")
+                        .help("Path to the storage.lmdb file. Used to find all blocks' state root hashes."),
+                )
+                .arg(
+                    Arg::new(SOURCE_TRIE_STORE_PATH)
+                        .required(true)
+                        .short('s')
+                        .long(SOURCE_TRIE_STORE_PATH)
+                        .takes_value(true)
+                        .value_name("SOURCE_TRIE_STORE_PATH")
+                        .help("Path to the source data.lmdb file."),
+                )
+                .arg(
+                    Arg::new(DESTINATION_TRIE_STORE_PATH)
+                        .required(true)
+                        .short('d')
+                        .long(DESTINATION_TRIE_STORE_PATH)
+                        .takes_value(true)
+                        .value_name("DESTINATION_TRIE_STORE_PATH")
+                        .help("Path to the destiantion data.lmdb file."),
+                )
+        )
         .arg(
             Arg::new(LOGGING)
                 .short('l')
@@ -88,24 +126,44 @@ fn main() {
         },
     );
 
-    if let Some((CHECK, sub_m)) = matches.subcommand() {
-        let path = sub_m.value_of(DB_PATH).unwrap();
-        let failfast = !sub_m.is_present(NO_FAILFAST);
-        let specific = sub_m.value_of(SPECIFIC);
-        let start_at: usize = sub_m
-            .value_of(START_AT)
-            .unwrap()
-            .parse()
-            .expect("Value of \"--start-at\" must be an integer.");
+    match matches.subcommand() {
+        Some((CHECK, sub_m)) => {
+            let path = sub_m.value_of(DB_PATH).unwrap();
+            let failfast = !sub_m.is_present(NO_FAILFAST);
+            let specific = sub_m.value_of(SPECIFIC);
+            let start_at: usize = sub_m
+                .value_of(START_AT)
+                .unwrap()
+                .parse()
+                .expect("Value of \"--start-at\" must be an integer.");
 
-        match check::check_db(path, failfast, specific, start_at) {
-            Ok(()) => {
-                exit(0);
+            match check::check_db(path, failfast, specific, start_at) {
+                Ok(()) => {
+                    exit(0);
+                }
+                Err(err) => {
+                    error!("Database check failed. {}", err);
+                    exit(128);
+                }
             }
-            Err(e) => {
-                error!("Database check failed. {}", e);
-                exit(128);
+        }
+        Some((COMPACT_TRIE, sub_m)) => {
+            let storage_path = sub_m.value_of(STORAGE_PATH).unwrap();
+            let source_trie_path = sub_m.value_of(SOURCE_TRIE_STORE_PATH).unwrap();
+            let destination_trie_path = sub_m.value_of(DESTINATION_TRIE_STORE_PATH).unwrap();
+            match trie_compact::trie_compact(storage_path.into(), source_trie_path.into(), destination_trie_path.into()) {
+                Ok(()) => {
+                    exit(0);
+                }
+                Err(err) => {
+                    error!("Trie compact failed. {}", err);
+                    exit(128);
+                }
             }
+        }
+        _ => {
+            error!("Error: invalid arguments. Run `casper-db-utils --help` for more information.");
+            exit(129);
         }
     }
 }
