@@ -8,16 +8,23 @@ use std::{fs::OpenOptions, process::exit};
 use clap::{Arg, Command};
 use log::error;
 
+use trie_compact::{DestinationOptions, DEFAULT_MAX_DB_SIZE};
+
 const CHECK: &str = "check";
+
 const DB_PATH: &str = "db-path";
 const NO_FAILFAST: &str = "no-failfast";
 const SPECIFIC: &str = "specific";
 const START_AT: &str = "start-at";
 
 const COMPACT_TRIE: &str = "compact-trie";
-const STORAGE_PATH: &str = "storage-path";
-const SOURCE_TRIE_STORE_PATH: &str = "src-trie";
+
+const APPEND: &str = "append";
 const DESTINATION_TRIE_STORE_PATH: &str = "dest-trie";
+const OVERWRITE: &str = "overwrite";
+const MAX_DB_SIZE: &str = "max-db-size";
+const SOURCE_TRIE_STORE_PATH: &str = "src-trie";
+const STORAGE_PATH: &str = "storage-path";
 
 const LOGGING: &str = "logging";
 
@@ -73,22 +80,12 @@ fn main() {
             Command::new(COMPACT_TRIE)
                 .about("Writes a compacted version of the block entries in the source trie store to the destination.")
                 .arg(
-                    Arg::new(STORAGE_PATH)
-                        .required(true)
-                        .short('b')
-                        .long(STORAGE_PATH)
-                        .takes_value(true)
-                        .value_name("STORAGE_PATH")
-                        .help("Path to the storage.lmdb file. Used to find all blocks' state root hashes."),
-                )
-                .arg(
-                    Arg::new(SOURCE_TRIE_STORE_PATH)
-                        .required(true)
-                        .short('s')
-                        .long(SOURCE_TRIE_STORE_PATH)
-                        .takes_value(true)
-                        .value_name("SOURCE_TRIE_STORE_PATH")
-                        .help("Path to the source data.lmdb file."),
+                    Arg::new(APPEND)
+                        .required(false)
+                        .short('a')
+                        .long(OVERWRITE)
+                        .takes_value(false)
+                        .help("Append output to an already existing output `data.lmdb` file in destination directory."),
                 )
                 .arg(
                     Arg::new(DESTINATION_TRIE_STORE_PATH)
@@ -96,8 +93,44 @@ fn main() {
                         .short('d')
                         .long(DESTINATION_TRIE_STORE_PATH)
                         .takes_value(true)
-                        .value_name("DESTINATION_TRIE_STORE_PATH")
-                        .help("Path to the destiantion data.lmdb file."),
+                        .value_name("DESTINATION_TRIE_STORE_DIR_PATH")
+                        .help("Path of the directory where the output `data.lmdb` file will be created."),
+                )
+                .arg(
+                    Arg::new(OVERWRITE)
+                        .required(false)
+                        .short('w')
+                        .long(OVERWRITE)
+                        .takes_value(false)
+                        .conflicts_with(APPEND)
+                        .help("Append output to an already existing output `data.lmdb` file in destination directory."),
+                )
+                .arg(
+                    Arg::new(MAX_DB_SIZE)
+                        .required(false)
+                        .short('m')
+                        .long(MAX_DB_SIZE)
+                        .takes_value(true)
+                        .default_value(&DEFAULT_MAX_DB_SIZE.to_string())
+                        .help("Maximum size the DB files are allowed to be, in bytes."),
+                )
+                .arg(
+                    Arg::new(SOURCE_TRIE_STORE_PATH)
+                        .required(true)
+                        .short('s')
+                        .long(SOURCE_TRIE_STORE_PATH)
+                        .takes_value(true)
+                        .value_name("SOURCE_TRIE_STORE_DIR_PATH")
+                        .help("Path of the directory with the source `data.lmdb` file."),
+                )
+                .arg(
+                    Arg::new(STORAGE_PATH)
+                        .required(true)
+                        .short('b')
+                        .long(STORAGE_PATH)
+                        .takes_value(true)
+                        .value_name("STORAGE_DIR_PATH")
+                        .help("Path of the directory with the `storage.lmdb` file. Used to find all blocks' state root hashes."),
                 )
         )
         .arg(
@@ -151,7 +184,25 @@ fn main() {
             let storage_path = sub_m.value_of(STORAGE_PATH).unwrap();
             let source_trie_path = sub_m.value_of(SOURCE_TRIE_STORE_PATH).unwrap();
             let destination_trie_path = sub_m.value_of(DESTINATION_TRIE_STORE_PATH).unwrap();
-            match trie_compact::trie_compact(storage_path.into(), source_trie_path.into(), destination_trie_path.into()) {
+            // Prettier than C style if/else.
+            let dest_opt = match sub_m {
+                _ if sub_m.is_present(APPEND) => DestinationOptions::Append,
+                _ if sub_m.is_present(OVERWRITE) => DestinationOptions::Overwrite,
+                _ => DestinationOptions::New,
+            };
+            let max_db_size = sub_m
+                .value_of(MAX_DB_SIZE)
+                .unwrap()
+                .parse()
+                .expect("Value of \"--max-db-size\" must be an integer.");
+
+            match trie_compact::trie_compact(
+                storage_path.into(),
+                source_trie_path.into(),
+                destination_trie_path.into(),
+                dest_opt,
+                max_db_size,
+            ) {
                 Ok(()) => {
                     exit(0);
                 }

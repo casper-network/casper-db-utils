@@ -1,12 +1,24 @@
-use std::{path::{Path, PathBuf}, sync::Arc, fs, env};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
-use log::{info};
+use log::info;
 
-use casper_execution_engine::{core::engine_state::{EngineState, EngineConfig}, storage::{global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment, trie_store::lmdb::LmdbTrieStore}};
+use casper_execution_engine::{
+    core::engine_state::{EngineConfig, EngineState},
+    storage::{
+        global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
+        trie_store::lmdb::LmdbTrieStore,
+    },
+};
 use casper_hashing::Digest;
 use casper_node::{storage::Storage, StorageConfig, WithDir};
 use casper_types::ProtocolVersion;
 use lmdb::DatabaseFlags;
+
+use super::compact::TRIE_STORE_FILE_NAME;
 
 /// LMDB max readers
 ///
@@ -20,8 +32,8 @@ pub fn load_execution_engine(
     state_root_hash: Digest,
     manual_sync_enabled: bool,
 ) -> Result<(Arc<EngineState<LmdbGlobalState>>, Arc<LmdbEnvironment>), anyhow::Error> {
-    let lmdb_data_file = ee_lmdb_path.as_ref().join("data.lmdb");
-    if !ee_lmdb_path.as_ref().join("data.lmdb").exists() {
+    let lmdb_data_file = ee_lmdb_path.as_ref().join(TRIE_STORE_FILE_NAME);
+    if !ee_lmdb_path.as_ref().join(TRIE_STORE_FILE_NAME).exists() {
         return Err(anyhow::anyhow!(
             "lmdb data file not found at: {}",
             lmdb_data_file.display()
@@ -87,9 +99,7 @@ pub fn create_execution_engine(
     ))
 }
 
-pub fn create_storage(
-    chain_download_path: impl AsRef<Path>
-) -> Result<Storage, anyhow::Error> {
+pub fn create_storage(chain_download_path: impl AsRef<Path>) -> Result<Storage, anyhow::Error> {
     let chain_download_path = normalize_path(chain_download_path)?;
     let mut storage_config = StorageConfig::default();
     storage_config.path = chain_download_path.clone();

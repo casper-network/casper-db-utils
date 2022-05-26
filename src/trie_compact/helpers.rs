@@ -1,10 +1,10 @@
-use std::{time::{Duration, Instant}};
+use std::time::{Duration, Instant};
 
-use log::{info, warn};
 use lmdb::{RwTransaction, Transaction};
+use log::{info, warn};
 
 use casper_execution_engine::{
-    core::engine_state::{EngineState},
+    core::engine_state::EngineState,
     storage::{
         global_state::lmdb::LmdbGlobalState,
         transaction_source::{Readable, TransactionSource, Writable},
@@ -31,7 +31,7 @@ fn memoized_find_missing_descendants<'env>(
     }
     let start_trie_keys = Instant::now();
     let trie: Trie<Key, StoredValue> = bytesrepr::deserialize(value_bytes.into())
-        .map_err(|err| anyhow::anyhow!("deserialize failed {:?}", err))?;
+        .map_err(|err| anyhow::anyhow!("couldn't deserialize trie: {:?}", err))?;
     match trie {
         Trie::Leaf { .. } => {
             // If `bytesrepr` is functioning correctly, this should never be reached (see
@@ -63,7 +63,7 @@ fn find_missing_trie_keys<'env>(
     let existing = txn.read(
         handle.get_db(),
         &ptr.to_bytes()
-            .map_err(|err| anyhow::anyhow!("tobytes {:?}", err))?,
+            .map_err(|err| anyhow::anyhow!("couldn't serialize trie pointer: {:?}", err))?,
     )?;
     if existing.is_none() {
         missing_trie_keys.push(ptr);
@@ -99,7 +99,7 @@ pub fn copy_state_root(
         let destination_store = destination.get_state().trie_store();
         let trie_key_bytes = next_trie_key
             .to_bytes()
-            .map_err(|err| anyhow::anyhow!("tobytes {:?}", err))?;
+            .map_err(|err| anyhow::anyhow!("couldn't serialize trie key: {:?}", err))?;
 
         let read_txn = source.get_state().environment().create_read_txn()?;
         let mut write_txn = destination
@@ -111,7 +111,7 @@ pub fn copy_state_root(
             Some(value_bytes) => {
                 let key_bytes = next_trie_key
                     .to_bytes()
-                    .map_err(|err| anyhow::anyhow!("tobytes {:?}", err))?;
+                    .map_err(|err| anyhow::anyhow!("couldn't serialize trie key: {:?}", err))?;
                 let read_bytes = key_bytes.len() as u64 + value_bytes.len() as u64;
                 total_bytes += read_bytes;
                 total_tries += 1;
