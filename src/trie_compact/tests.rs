@@ -373,7 +373,7 @@ fn valid_existing_dst_with_destination_options() {
 fn missing_dst_with_destination_options() {
     let (src_dir, _) = create_test_trie_store();
     let root_dst_dir = tempdir().unwrap();
-    let dst_dir = root_dst_dir.path().join("extra_dir").to_owned();
+    let dst_dir = root_dst_dir.path().join("extra_dir");
     let (storage_dir, _store) = create_empty_test_storage();
     match trie_compact(
         storage_dir.path().into(),
