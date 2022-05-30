@@ -83,8 +83,9 @@ fn main() {
                     Arg::new(APPEND)
                         .required(false)
                         .short('a')
-                        .long(OVERWRITE)
+                        .long(APPEND)
                         .takes_value(false)
+                        .conflicts_with(OVERWRITE)
                         .help("Append output to an already existing output `data.lmdb` file in destination directory."),
                 )
                 .arg(
@@ -103,7 +104,7 @@ fn main() {
                         .long(OVERWRITE)
                         .takes_value(false)
                         .conflicts_with(APPEND)
-                        .help("Append output to an already existing output `data.lmdb` file in destination directory."),
+                        .help("Overwrite an already existing output `data.lmdb` file in destination directory."),
                 )
                 .arg(
                     Arg::new(MAX_DB_SIZE)
@@ -112,6 +113,7 @@ fn main() {
                         .long(MAX_DB_SIZE)
                         .takes_value(true)
                         .default_value(&DEFAULT_MAX_DB_SIZE.to_string())
+                        .value_name("MAX_DB_SIZE")
                         .help("Maximum size the DB files are allowed to be, in bytes."),
                 )
                 .arg(
