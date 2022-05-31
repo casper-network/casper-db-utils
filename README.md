@@ -1,2 +1,3 @@
 # casper-db-utils
-Utilities to perform operations casper-node databases.
+
+Utilities for working with databases of the Casper blockchain.

@@ -16,7 +16,6 @@ use casper_node::storage::Error as StorageError;
 
 use super::utils::{create_execution_engine, create_storage, load_execution_engine};
 
-pub const DEFAULT_MAX_DB_SIZE: usize = 483_183_820_800; // 450 gb
 pub(crate) const TRIE_STORE_FILE_NAME: &str = "data.lmdb";
 
 /// Defines behavior for opening destination trie store.

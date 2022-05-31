@@ -1,13 +1,86 @@
-use std::result::Result;
+mod db;
 
-use crate::db::{
+use clap::{Arg, ArgMatches, Command};
+use log::error;
+
+use db::{
     db_env, BlockBodyDatabase, BlockBodyMerkleDatabase, BlockHeaderDatabase, BlockMetadataDatabase,
     Database, DeployDatabase, DeployHashesDatabase, DeployMetadataDatabase, Error,
     FinalizedApprovalsDatabase, ProposerDatabase, StateStoreDatabase, TransferDatabase,
     TransferHashesDatabase,
 };
 
-pub fn check_db(
+pub const COMMAND_NAME: &str = "check";
+const DB_PATH: &str = "db-path";
+const NO_FAILFAST: &str = "no-failfast";
+const SPECIFIC: &str = "specific";
+const START_AT: &str = "start-at";
+
+pub fn command() -> Command<'static> {
+    Command::new(COMMAND_NAME)
+        .about("Checks validity of entries in a storage database through ensuring deserialization is successful.")
+        .arg(
+            Arg::new(NO_FAILFAST)
+                .short('f')
+                .long(NO_FAILFAST)
+                .takes_value(false)
+                .help(
+                    "Program will not terminate when failing to parse an element in the database.",
+                ),
+        )
+        .arg(
+            Arg::new(DB_PATH)
+                .required(true)
+                .short('d')
+                .long(DB_PATH)
+                .takes_value(true)
+                .value_name("DB_PATH")
+                .help("Path to the storage.lmdb file."),
+        )
+        .arg(
+            Arg::new(SPECIFIC)
+                .short('s')
+                .long(SPECIFIC)
+                .takes_value(true)
+                .value_name("DB_NAME")
+                .help(
+                    "Parse a specific database.",
+                ),
+        )
+        .arg(
+            Arg::new(START_AT)
+                .short('i')
+                .long(START_AT)
+                .takes_value(true)
+                .value_name("ENTRY_INDEX")
+                .requires(SPECIFIC)
+                .default_value("0")
+                .help(
+                    "Entry index from which parsing will start. Requires \"--specific\" parameter to be set.",
+                ),
+        )
+}
+
+pub fn run(matches: &ArgMatches) -> bool {
+    let path = matches.value_of(DB_PATH).unwrap();
+    let failfast = !matches.is_present(NO_FAILFAST);
+    let specific = matches.value_of(SPECIFIC);
+    let start_at: usize = matches
+        .value_of(START_AT)
+        .unwrap()
+        .parse()
+        .expect("Value of \"--start-at\" must be an integer.");
+
+    let result = check_db(path, failfast, specific, start_at);
+
+    if let Err(error) = &result {
+        error!("Database check failed. {}", error);
+    }
+
+    result.is_ok()
+}
+
+fn check_db(
     path: &str,
     failfast: bool,
     specific: Option<&str>,

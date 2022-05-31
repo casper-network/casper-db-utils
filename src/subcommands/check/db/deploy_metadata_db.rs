@@ -4,7 +4,7 @@ use std::{
     result::Result,
 };
 
-use crate::db::{Database, DeserializationError};
+use super::{Database, DeserializationError};
 
 pub struct DeployMetadataDatabase;
 

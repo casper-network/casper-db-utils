@@ -5,7 +5,7 @@ use std::{
 
 use casper_types::{bytesrepr::FromBytes, PublicKey};
 
-use crate::db::{Database, DeserializationError};
+use super::{Database, DeserializationError};
 
 pub struct ProposerDatabase;
 
