@@ -1,4 +1,6 @@
 mod download_stream;
+#[cfg(test)]
+mod tests;
 mod zstd_decode;
 
 use std::io::Error as IoError;
