@@ -4,7 +4,7 @@ use clap::{Arg, ArgMatches, Command};
 use lmdb::{Environment, EnvironmentFlags};
 use log::{error, info};
 
-pub const COMMAND_NAME: &str = "unsparsify";
+pub const COMMAND_NAME: &str = "unsparse";
 const DB_PATH: &str = "file-path";
 
 pub fn command(display_order: usize) -> Command<'static> {
@@ -68,7 +68,7 @@ pub fn run(matches: &ArgMatches) -> bool {
         );
         true
     } else {
-        info!(
+        error!(
             "Failed to reduce size of {} from {} bytes.",
             path.display(),
             size_before

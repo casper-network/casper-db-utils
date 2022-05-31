@@ -20,7 +20,6 @@ const DEFAULT_MAX_DB_SIZE: &str = "483183820800"; // 450 gb
 const SOURCE_TRIE_STORE_PATH: &str = "src-trie";
 const STORAGE_PATH: &str = "storage-path";
 
-/// This struct defines the order in which the args are shown for this subcommand.
 enum DisplayOrder {
     SourcePath,
     DestinationPath,
