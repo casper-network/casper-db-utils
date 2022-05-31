@@ -16,11 +16,23 @@ const NO_FAILFAST: &str = "no-failfast";
 const SPECIFIC: &str = "specific";
 const START_AT: &str = "start-at";
 
-pub fn command() -> Command<'static> {
+enum DisplayOrder {
+    NoFailfast,
+    DbPath,
+    Specific,
+    StartAt,
+}
+
+pub fn command(display_order: usize) -> Command<'static> {
     Command::new(COMMAND_NAME)
-        .about("Checks validity of entries in a storage database through ensuring deserialization is successful.")
+        .about(
+            "Checks validity of entries in a storage database through ensuring deserialization is \
+            successful.",
+        )
+        .display_order(display_order)
         .arg(
             Arg::new(NO_FAILFAST)
+                .display_order(DisplayOrder::NoFailfast as usize)
                 .short('f')
                 .long(NO_FAILFAST)
                 .takes_value(false)
@@ -30,6 +42,7 @@ pub fn command() -> Command<'static> {
         )
         .arg(
             Arg::new(DB_PATH)
+                .display_order(DisplayOrder::DbPath as usize)
                 .required(true)
                 .short('d')
                 .long(DB_PATH)
@@ -39,16 +52,16 @@ pub fn command() -> Command<'static> {
         )
         .arg(
             Arg::new(SPECIFIC)
+                .display_order(DisplayOrder::Specific as usize)
                 .short('s')
                 .long(SPECIFIC)
                 .takes_value(true)
                 .value_name("DB_NAME")
-                .help(
-                    "Parse a specific database.",
-                ),
+                .help("Parse a specific database."),
         )
         .arg(
             Arg::new(START_AT)
+                .display_order(DisplayOrder::StartAt as usize)
                 .short('i')
                 .long(START_AT)
                 .takes_value(true)
@@ -56,7 +69,8 @@ pub fn command() -> Command<'static> {
                 .requires(SPECIFIC)
                 .default_value("0")
                 .help(
-                    "Entry index from which parsing will start. Requires \"--specific\" parameter to be set.",
+                    "Entry index from which parsing will start. Requires \"--specific\" parameter \
+                    to be set.",
                 ),
         )
 }

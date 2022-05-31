@@ -17,7 +17,7 @@ casper-execution-engine = "2"
 casper-hashing = "1"
 casper-node = "1"
 casper-types = "1"
-clap = "3"
+clap = { version = "3", features = ["cargo"] }
 lmdb = "0.8.0"
 lmdb-sys = "0.8.0"
 log = "0.4.17"

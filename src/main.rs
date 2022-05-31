@@ -3,16 +3,18 @@ mod subcommands;
 
 use std::{fs::OpenOptions, process};
 
-use clap::{Arg, Command};
+use clap::{crate_description, crate_version, Arg, Command};
 
 const LOGGING: &str = "logging";
 
 fn cli() -> Command<'static> {
     Command::new("casper-db-utils")
+        .version(crate_version!())
+        .about(crate_description!())
         .arg_required_else_help(true)
-        .about("Utilities for working with databases of the Casper blockchain.")
-        .subcommand(subcommands::check::command())
-        .subcommand(subcommands::trie_compact::command())
+        .subcommand(subcommands::check::command(0))
+        .subcommand(subcommands::trie_compact::command(1))
+        .subcommand(subcommands::unsparsify::command(2))
         .arg(
             Arg::new(LOGGING)
                 .short('l')
@@ -49,6 +51,7 @@ fn main() {
     let succeeded = match subcommand_name {
         subcommands::check::COMMAND_NAME => subcommands::check::run(matches),
         subcommands::trie_compact::COMMAND_NAME => subcommands::trie_compact::run(matches),
+        subcommands::unsparsify::COMMAND_NAME => subcommands::unsparsify::run(matches),
         _ => {
             let _ = cli().print_long_help();
             println!();
