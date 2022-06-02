@@ -1,30 +1,9 @@
-use lmdb::{
-    Database as LmdbDatabase, DatabaseFlags, Environment, EnvironmentFlags, Transaction, WriteFlags,
-};
+use lmdb::{Database as LmdbDatabase, Environment, Transaction, WriteFlags};
 use rand::{self, prelude::ThreadRng, Rng, RngCore};
 use serde::{Deserialize, Serialize};
-use tempfile::NamedTempFile;
 
 use super::{Database, DeserializationError};
-
-fn create_test_db(name: Option<&str>) -> (Environment, LmdbDatabase) {
-    let tmp_file = NamedTempFile::new().unwrap();
-    let env = Environment::new()
-        .set_flags(
-            EnvironmentFlags::empty()
-                | EnvironmentFlags::NO_SUB_DIR
-                | EnvironmentFlags::NO_TLS
-                | EnvironmentFlags::NO_READAHEAD,
-        )
-        .set_max_readers(12)
-        .set_max_dbs(1)
-        .open(tmp_file.path())
-        .expect("can't create environment");
-    let db = env
-        .create_db(name, DatabaseFlags::empty())
-        .expect("can't create database");
-    (env, db)
-}
+use crate::test_utils::LmdbTestFixture;
 
 fn gen_bytes(rng: &mut ThreadRng) -> Vec<u8> {
     let mock = MockStruct::random(rng);
@@ -162,22 +141,22 @@ fn sanity_check_ser_deser() {
 
 #[test]
 fn good_db_should_pass_check() {
-    let (env, db) = create_test_db(Some(MockDb::db_name()));
-    populate_db(&env, &db);
+    let fixture = LmdbTestFixture::new(Some(MockDb::db_name()));
+    populate_db(&fixture.env, &fixture.db);
 
-    assert!(MockDb::check_db(&env, true, 0).is_ok());
-    assert!(MockDb::check_db(&env, false, 0).is_ok());
-    assert!(MockDb::check_db(&env, true, 4).is_ok());
-    assert!(MockDb::check_db(&env, false, 4).is_ok());
+    assert!(MockDb::check_db(&fixture.env, true, 0).is_ok());
+    assert!(MockDb::check_db(&fixture.env, false, 0).is_ok());
+    assert!(MockDb::check_db(&fixture.env, true, 4).is_ok());
+    assert!(MockDb::check_db(&fixture.env, false, 4).is_ok());
 }
 
 #[test]
 fn bad_db_should_fail_check() {
-    let (env, db) = create_test_db(Some(MockDb::db_name()));
-    populate_faulty_db(&env, &db);
+    let fixture = LmdbTestFixture::new(Some(MockDb::db_name()));
+    populate_faulty_db(&fixture.env, &fixture.db);
 
-    assert!(MockDb::check_db(&env, true, 0).is_err());
-    assert!(MockDb::check_db(&env, false, 0).is_err());
-    assert!(MockDb::check_db(&env, true, 4).is_err());
-    assert!(MockDb::check_db(&env, false, 4).is_err());
+    assert!(MockDb::check_db(&fixture.env, true, 0).is_err());
+    assert!(MockDb::check_db(&fixture.env, false, 0).is_err());
+    assert!(MockDb::check_db(&fixture.env, true, 4).is_err());
+    assert!(MockDb::check_db(&fixture.env, false, 4).is_err());
 }

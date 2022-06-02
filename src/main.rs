@@ -1,9 +1,12 @@
 mod logging;
 mod subcommands;
+#[cfg(test)]
+pub(crate) mod test_utils;
 
 use std::{fs::OpenOptions, process};
 
 use clap::{crate_description, crate_version, Arg, Command};
+use log::error;
 
 use subcommands::{check, trie_compact, unsparse};
 
@@ -51,8 +54,7 @@ fn main() {
     );
 
     let (subcommand_name, matches) = arg_matches.subcommand().unwrap_or_else(|| {
-        let _ = cli().print_long_help();
-        println!();
+        error!("{}", cli().get_long_about().unwrap());
         process::exit(1);
     });
 
@@ -60,11 +62,7 @@ fn main() {
         check::COMMAND_NAME => check::run(matches),
         trie_compact::COMMAND_NAME => trie_compact::run(matches),
         unsparse::COMMAND_NAME => unsparse::run(matches),
-        _ => {
-            let _ = cli().print_long_help();
-            println!();
-            process::exit(1);
-        }
+        _ => unreachable!("{} should be handled above", subcommand_name),
     };
 
     if !succeeded {

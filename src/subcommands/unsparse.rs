@@ -19,7 +19,7 @@ pub fn command(display_order: usize) -> Command<'static> {
                 .display_order(0)
                 .value_name("DB_PATH")
                 .required(true)
-                .help("Path to LMDB database file."),
+                .help("Path to the storage.lmdb file."),
         )
 }
 
@@ -29,7 +29,10 @@ pub fn run(matches: &ArgMatches) -> bool {
             .value_of(DB_PATH)
             .expect("should have file-path arg"),
     );
+    unsparse(path)
+}
 
+fn unsparse(path: &Path) -> bool {
     let size_before = match fs::metadata(path) {
         Ok(metadata) => metadata.len(),
         Err(error) => {
@@ -74,5 +77,31 @@ pub fn run(matches: &ArgMatches) -> bool {
             size_before
         );
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::LmdbTestFixture;
+
+    #[test]
+    fn should_reduce_lmdb_file_size() {
+        let fixture = LmdbTestFixture::new(Some("a"));
+        let db_path = fixture.tmp_file.path();
+        let db_size = || {
+            fs::metadata(db_path)
+                .unwrap_or_else(|error| {
+                    panic!("should get metadata for {}: {}", db_path.display(), error)
+                })
+                .len()
+        };
+        let size_before = db_size();
+        assert!(unsparse(db_path), "unsparse should succeed");
+        let size_after = db_size();
+        assert!(size_after < size_before, "unsparse should reduce file size");
+
+        assert!(!unsparse(db_path), "repeat unsparse should fail");
+        assert_eq!(db_size(), size_after, "file size should be unchanged");
     }
 }
