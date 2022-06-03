@@ -21,7 +21,7 @@ fn serve_request(payload: Vec<u8>, barrier: Arc<Barrier>, addr: &str) {
         let (mut stream, _) = listener.accept().unwrap();
         let mut buf = vec![];
         // Don't care about the request contents.
-        stream.read(&mut buf).unwrap();
+        let _ = stream.read(&mut buf).unwrap();
         // Write the mock file contents back with a simple HTTP response.
         stream
             .write_all(
@@ -48,7 +48,7 @@ fn zstd_decode_roundtrip() {
 
     // Encode the payload with zstd.
     let mut encoder = Encoder::new(vec![], 0).unwrap();
-    encoder.write_all(&mut payload).unwrap();
+    encoder.write_all(&payload).unwrap();
     let encoded = encoder.finish().unwrap();
 
     // Decode the response with our function.
@@ -114,9 +114,8 @@ fn archive_get_with_decode() {
 
     // Encode the payload with zstd.
     let mut encoder = Encoder::new(vec![], 0).unwrap();
-    encoder.write_all(&mut payload).unwrap();
+    encoder.write_all(&payload).unwrap();
     let encoded = encoder.finish().unwrap();
-    let encoded_copy = encoded.clone();
 
     let barrier = Arc::new(Barrier::new(2));
     let server_barrier = barrier.clone();
@@ -124,7 +123,7 @@ fn archive_get_with_decode() {
     // Set up a server on another thread which will be our
     // `get` target.
     let join_handle = thread::spawn(move || {
-        serve_request(encoded_copy, server_barrier, TEST_ADDR_DECODE);
+        serve_request(encoded, server_barrier, TEST_ADDR_DECODE);
     });
 
     // Create the directory where we save the downloaded file.
