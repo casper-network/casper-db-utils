@@ -5,7 +5,7 @@ use std::{
 
 use casper_node::types::BlockHeader;
 
-use crate::db::{Database, DeserializationError};
+use super::{Database, DeserializationError};
 
 pub struct BlockHeaderDatabase;
 
