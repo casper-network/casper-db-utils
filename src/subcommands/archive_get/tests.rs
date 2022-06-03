@@ -14,14 +14,31 @@ use super::{download_stream::download_archive, zstd_decode::zstd_decode_stream};
 const TEST_ADDR_DECODE: &str = "127.0.0.1:9876";
 const TEST_ADDR_NO_DECODE: &str = "127.0.0.1:9875";
 
+const HTTP_HEADER_END_SEQUENCE: [u8; 4] = [b'\r', b'\n', b'\r', b'\n'];
+
 fn serve_request(payload: Vec<u8>, barrier: Arc<Barrier>, addr: &str) {
     let listener = TcpListener::bind(addr).unwrap();
     {
+        // Wait on the barrier to signal to the main thread that we
+        // set up the server and accept requests.
+        let _ = barrier.wait();
         // Accept the connection we're making.
         let (mut stream, _) = listener.accept().unwrap();
-        let mut buf = vec![];
-        // Don't care about the request contents.
-        let _ = stream.read(&mut buf).unwrap();
+        let mut buf = [0u8; 100].to_vec();
+        // Read all the bytes of the request.
+        loop {
+            // Don't care about the request contents.
+            let _ = stream.read(&mut buf).unwrap();
+            // Since this is a GET request, it will end with a sequence of
+            // [CR, LF, CR, LF], which marks the end of the header section.
+            if buf
+                .windows(HTTP_HEADER_END_SEQUENCE.len())
+                .any(|slice| *slice == HTTP_HEADER_END_SEQUENCE)
+            {
+                break;
+            }
+        }
+
         // Write the mock file contents back with a simple HTTP response.
         stream
             .write_all(
@@ -33,7 +50,7 @@ fn serve_request(payload: Vec<u8>, barrier: Arc<Barrier>, addr: &str) {
             )
             .unwrap();
         stream.write_all(&payload).unwrap();
-        // Have a barrier here so we don't drop the stream until we finish
+        // Wait on the barrier here so we don't drop the stream until we finish
         // reading on the other end.
         let _ = barrier.wait();
     }
@@ -76,6 +93,9 @@ fn archive_get_no_decode() {
     let join_handle = thread::spawn(move || {
         serve_request(payload_copy, server_barrier, TEST_ADDR_NO_DECODE);
     });
+
+    // Wait for the server thread to do its setup and bind to the port.
+    let _ = barrier.wait();
 
     // Create the directory where we save the downloaded file.
     let temp_dir = tempfile::tempdir().unwrap();
@@ -125,6 +145,9 @@ fn archive_get_with_decode() {
     let join_handle = thread::spawn(move || {
         serve_request(encoded, server_barrier, TEST_ADDR_DECODE);
     });
+
+    // Wait for the server thread to do its setup and bind to the port.
+    let _ = barrier.wait();
 
     // Create the directory where we save the downloaded file.
     let temp_dir = tempfile::tempdir().unwrap();
