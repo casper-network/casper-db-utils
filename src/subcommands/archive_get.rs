@@ -76,7 +76,7 @@ pub fn command(display_order: usize) -> Command<'static> {
                 .long(WINDOW_LOG_DISTANCE)
                 .takes_value(true)
                 .value_name("WINDOW_LOG_DISTANCE")
-                .help("Window log size passed to the zstd decoder as the \"--long\" parameter."),
+                .help("Window log max size passed to the zstd decoder as the \"--windowLog\" parameter."),
         )
 }
 

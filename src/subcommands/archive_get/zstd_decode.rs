@@ -8,6 +8,8 @@ use zstd::Decoder;
 
 use super::Error;
 
+const DEFAULT_WINDOW_LOG_MAX_SIZE: u32 = 27;
+
 pub fn zstd_decode_stream<'a, R: Read>(
     stream: R,
     log_distance: Option<u32>,
@@ -17,7 +19,12 @@ pub fn zstd_decode_stream<'a, R: Read>(
         decoder
             .window_log_max(window_log_distance)
             .map_err(Error::ZstdDecoderSetup)?;
-        info!("Set zstd window log size to {}", window_log_distance);
+        info!("Set zstd window log max size to {}", window_log_distance);
+    } else {
+        info!(
+            "Default zstd window log max size {}",
+            DEFAULT_WINDOW_LOG_MAX_SIZE
+        );
     }
     Ok(decoder)
 }
