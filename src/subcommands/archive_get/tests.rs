@@ -157,7 +157,7 @@ fn archive_get_with_decode() {
     let mut http_addr = "http://".to_string();
     http_addr.push_str(TEST_ADDR_DECODE);
 
-    // Download the file without zstd encoding.
+    // Download the file with zstd encoding.
     download_archive(&http_addr, dest_path.clone(), true, None)
         .expect("Error downloading and decoding payload");
 
