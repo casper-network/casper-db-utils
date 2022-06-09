@@ -58,7 +58,7 @@ pub fn command(display_order: usize) -> Command<'static> {
                 .short('o')
                 .long(OUTPUT)
                 .takes_value(true)
-                .value_name("OUT_DIR")
+                .value_name("FILE_PATH")
                 .help("Output file path for the decompressed TAR archive."),
         )
         .arg(
@@ -71,11 +71,11 @@ pub fn command(display_order: usize) -> Command<'static> {
         .arg(
             Arg::new(WINDOW_LOG_DISTANCE)
                 .display_order(DisplayOrder::WindowLogDistance as usize)
-                .required(true)
                 .short('w')
                 .long(WINDOW_LOG_DISTANCE)
                 .takes_value(true)
-                .value_name("WINDOW_LOG_DISTANCE")
+                .value_name("INTEGER")
+                .requires(EXTRACT)
                 .help("Window log max size passed to the zstd decoder as the \"--windowLog\" parameter."),
         )
 }

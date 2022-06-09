@@ -95,7 +95,7 @@ pub fn download_archive(
     } else {
         std_io::copy(&mut stream_pipe, &mut output_file).map_err(Error::Streaming)?
     };
-    info!("Dowload complete.");
+    info!("Download complete.");
     if zstd_decode {
         info!("Decoded {} bytes.", decoded_bytes);
     }
