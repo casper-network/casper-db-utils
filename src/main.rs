@@ -8,11 +8,12 @@ use std::{fs::OpenOptions, process};
 use clap::{crate_description, crate_version, Arg, Command};
 use log::error;
 
-use subcommands::{check, trie_compact, unsparse};
+use subcommands::{archive_get, check, trie_compact, unsparse};
 
 const LOGGING: &str = "logging";
 
 enum DisplayOrder {
+    ArchiveGet,
     Check,
     TrieCompact,
     Unsparse,
@@ -23,6 +24,7 @@ fn cli() -> Command<'static> {
         .version(crate_version!())
         .about(crate_description!())
         .arg_required_else_help(true)
+        .subcommand(archive_get::command(DisplayOrder::ArchiveGet as usize))
         .subcommand(check::command(DisplayOrder::Check as usize))
         .subcommand(trie_compact::command(DisplayOrder::TrieCompact as usize))
         .subcommand(unsparse::command(DisplayOrder::Unsparse as usize))
@@ -59,6 +61,7 @@ fn main() {
     });
 
     let succeeded = match subcommand_name {
+        archive_get::COMMAND_NAME => archive_get::run(matches),
         check::COMMAND_NAME => check::run(matches),
         trie_compact::COMMAND_NAME => trie_compact::run(matches),
         unsparse::COMMAND_NAME => unsparse::run(matches),
