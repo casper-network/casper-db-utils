@@ -72,12 +72,7 @@ impl Read for StreamPipe {
     }
 }
 
-pub fn download_archive(
-    url: &str,
-    dest: PathBuf,
-    zstd_decode: bool,
-    log_distance: Option<u32>,
-) -> Result<(), Error> {
+pub fn download_archive(url: &str, dest: PathBuf, zstd_decode: bool) -> Result<(), Error> {
     let mut output_file = OpenOptions::new()
         .create_new(true)
         .write(true)
@@ -90,7 +85,7 @@ pub fn download_archive(
         .map_err(Error::Runtime)?;
     let mut stream_pipe = StreamPipe::new(runtime, url)?;
     let decoded_bytes = if zstd_decode {
-        let mut decoder = zstd_decode::zstd_decode_stream(stream_pipe, log_distance)?;
+        let mut decoder = zstd_decode::zstd_decode_stream(stream_pipe)?;
         std_io::copy(&mut decoder, &mut output_file).map_err(Error::Streaming)?
     } else {
         std_io::copy(&mut stream_pipe, &mut output_file).map_err(Error::Streaming)?

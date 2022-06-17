@@ -14,7 +14,6 @@ pub const COMMAND_NAME: &str = "unpack";
 const URL: &str = "url";
 const OUTPUT: &str = "output";
 const EXTRACT: &str = "extract";
-const WINDOW_LOG_DISTANCE: &str = "window-log-distance";
 
 #[derive(Debug, ThisError)]
 pub enum Error {
@@ -34,7 +33,6 @@ enum DisplayOrder {
     Url,
     Output,
     Extract,
-    WindowLogDistance,
 }
 
 pub fn command(display_order: usize) -> Command<'static> {
@@ -68,30 +66,13 @@ pub fn command(display_order: usize) -> Command<'static> {
                 .long(EXTRACT)
                 .help("Stream the downloaded data into a zstd decoder to output the extracted archive."),
         )
-        .arg(
-            Arg::new(WINDOW_LOG_DISTANCE)
-                .display_order(DisplayOrder::WindowLogDistance as usize)
-                .short('w')
-                .long(WINDOW_LOG_DISTANCE)
-                .takes_value(true)
-                .value_name("INTEGER")
-                .requires(EXTRACT)
-                .help("Window log max size passed to the zstd decoder as the \"--windowLog\" parameter."),
-        )
 }
 
 pub fn run(matches: &ArgMatches) -> bool {
     let url = matches.value_of(URL).unwrap();
     let dest = matches.value_of(OUTPUT).unwrap();
     let zstd_decode = matches.is_present(EXTRACT);
-    let log_distance = matches
-        .value_of(WINDOW_LOG_DISTANCE)
-        .map(|log_distance_str| {
-            log_distance_str
-                .parse()
-                .expect("Window log distance must be an integer.")
-        });
-    let result = download_stream::download_archive(url, dest.into(), zstd_decode, log_distance);
+    let result = download_stream::download_archive(url, dest.into(), zstd_decode);
 
     if let Err(error) = &result {
         error!("Archive unpack failed. {}", error);

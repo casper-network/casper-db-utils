@@ -69,7 +69,7 @@ fn zstd_decode_roundtrip() {
     let encoded = encoder.finish().unwrap();
 
     // Decode the response with our function.
-    let mut decoder = zstd_decode_stream(encoded.as_slice(), None).unwrap();
+    let mut decoder = zstd_decode_stream(encoded.as_slice()).unwrap();
     let mut decoded = vec![];
     decoder.read_to_end(&mut decoded).unwrap();
 
@@ -106,8 +106,7 @@ fn archive_get_no_decode() {
     http_addr.push_str(TEST_ADDR_NO_DECODE);
 
     // Download the file without zstd encoding.
-    download_archive(&http_addr, dest_path.clone(), false, None)
-        .expect("Error downloading payload");
+    download_archive(&http_addr, dest_path.clone(), false).expect("Error downloading payload");
 
     // Check that the downloaded contents are the same as our payload.
     let mut dest_file = OpenOptions::new()
@@ -158,7 +157,7 @@ fn archive_get_with_decode() {
     http_addr.push_str(TEST_ADDR_DECODE);
 
     // Download the file with zstd encoding.
-    download_archive(&http_addr, dest_path.clone(), true, None)
+    download_archive(&http_addr, dest_path.clone(), true)
         .expect("Error downloading and decoding payload");
 
     // Check that the downloaded contents are the same as our payload.
@@ -183,9 +182,9 @@ fn archive_get_invalid_url() {
     let dest_path = temp_dir.path().join("file.bin");
 
     // No HTTP schema.
-    assert!(download_archive("localhost:10000", dest_path.clone(), false, None).is_err());
+    assert!(download_archive("localhost:10000", dest_path.clone(), false).is_err());
     // No server running at `localhost:10000`.
-    assert!(download_archive("http://localhost:10000", dest_path, false, None).is_err());
+    assert!(download_archive("http://localhost:10000", dest_path, false).is_err());
 }
 
 #[test]
@@ -202,5 +201,5 @@ fn archive_get_existing_destination() {
         .unwrap();
     // Download should fail because the file is already present. Address doesn't
     // matter because the file check is performed first.
-    assert!(download_archive("bogus_address", dest_path, false, None).is_err());
+    assert!(download_archive("bogus_address", dest_path, false).is_err());
 }
