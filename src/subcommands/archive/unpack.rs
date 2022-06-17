@@ -10,7 +10,7 @@ use log::error;
 use reqwest::Error as ReqwestError;
 use thiserror::Error as ThisError;
 
-pub const COMMAND_NAME: &str = "archive-get";
+pub const COMMAND_NAME: &str = "unpack";
 const URL: &str = "url";
 const OUTPUT: &str = "output";
 const EXTRACT: &str = "extract";
@@ -94,7 +94,7 @@ pub fn run(matches: &ArgMatches) -> bool {
     let result = download_stream::download_archive(url, dest.into(), zstd_decode, log_distance);
 
     if let Err(error) = &result {
-        error!("Archive get failed. {}", error);
+        error!("Archive unpack failed. {}", error);
     }
 
     result.is_ok()
