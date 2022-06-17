@@ -2,6 +2,7 @@ use std::process;
 
 use clap::{ArgMatches, Command};
 
+mod tar_utils;
 mod unpack;
 
 pub const COMMAND_NAME: &str = "archive";

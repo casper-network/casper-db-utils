@@ -3,17 +3,18 @@ mod download_stream;
 mod tests;
 mod zstd_decode;
 
-use std::io::Error as IoError;
+use std::{io::Error as IoError, path::PathBuf};
 
 use clap::{Arg, ArgMatches, Command};
-use log::error;
+use log::{error, warn};
 use reqwest::Error as ReqwestError;
 use thiserror::Error as ThisError;
+
+use super::tar_utils;
 
 pub const COMMAND_NAME: &str = "unpack";
 const URL: &str = "url";
 const OUTPUT: &str = "output";
-const EXTRACT: &str = "extract";
 
 #[derive(Debug, ThisError)]
 pub enum Error {
@@ -25,6 +26,8 @@ pub enum Error {
     Destination(IoError),
     #[error("Error creating tokio runtime: {0}")]
     Runtime(IoError),
+    #[error("Error unpacking tarball: {0}")]
+    Tar(IoError),
     #[error("Error setting up zstd decoder: {0}")]
     ZstdDecoderSetup(IoError),
 }
@@ -32,7 +35,20 @@ pub enum Error {
 enum DisplayOrder {
     Url,
     Output,
-    Extract,
+}
+
+fn unpack(url: &str, dest: PathBuf) -> Result<(), Error> {
+    let archive_path = dest.as_path().join("casper_db_archive.tar.zst");
+    download_stream::download_archive(url, archive_path.clone())?;
+    tar_utils::unarchive(archive_path.clone(), dest).map_err(Error::Tar)?;
+    if let Err(io_err) = std::fs::remove_file(archive_path.clone()) {
+        warn!(
+            "Couldn't remove tarball at {} after unpacking: {}",
+            archive_path.as_os_str().to_string_lossy(),
+            io_err
+        );
+    }
+    Ok(())
 }
 
 pub fn command(display_order: usize) -> Command<'static> {
@@ -59,20 +75,12 @@ pub fn command(display_order: usize) -> Command<'static> {
                 .value_name("FILE_PATH")
                 .help("Output file path for the decompressed TAR archive."),
         )
-        .arg(
-            Arg::new(EXTRACT)
-                .display_order(DisplayOrder::Extract as usize)
-                .short('x')
-                .long(EXTRACT)
-                .help("Stream the downloaded data into a zstd decoder to output the extracted archive."),
-        )
 }
 
 pub fn run(matches: &ArgMatches) -> bool {
     let url = matches.value_of(URL).unwrap();
     let dest = matches.value_of(OUTPUT).unwrap();
-    let zstd_decode = matches.is_present(EXTRACT);
-    let result = download_stream::download_archive(url, dest.into(), zstd_decode);
+    let result = unpack(url, dest.into());
 
     if let Err(error) = &result {
         error!("Archive unpack failed. {}", error);
