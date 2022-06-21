@@ -32,8 +32,9 @@ pub fn unarchive(src: PathBuf, dest: PathBuf) -> Result<(), IoError> {
 #[cfg(test)]
 mod tests {
     use std::{
+        env,
         fs::{self, OpenOptions},
-        io::{Read, Write}, env,
+        io::{Read, Write},
     };
 
     use pathdiff;

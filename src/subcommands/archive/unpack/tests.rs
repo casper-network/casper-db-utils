@@ -9,6 +9,8 @@ use std::{
 use rand::{self, RngCore};
 use zstd::Encoder;
 
+use crate::subcommands::archive::unpack::file_stream::stream_file_archive;
+
 use super::{download_stream::download_archive, zstd_decode::zstd_decode_stream};
 
 const TEST_ADDR: &str = "127.0.0.1:9876";
@@ -57,6 +59,7 @@ fn serve_request(payload: Vec<u8>, barrier: Arc<Barrier>, addr: &str) {
 
 #[test]
 fn zstd_decode_roundtrip() {
+    let tmp_dir = tempfile::tempdir().unwrap();
     let mut rng = rand::thread_rng();
     // Generate a random payload.
     let mut payload = [0u8; 100];
@@ -67,17 +70,43 @@ fn zstd_decode_roundtrip() {
     encoder.write_all(&payload).unwrap();
     let encoded = encoder.finish().unwrap();
 
-    // Decode the response with our function.
+    // Write the encoded contents to a file as well.
+    let encoded_path = tmp_dir.path().join("encoded");
+    {
+        let mut encoded_file = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&encoded_path)
+            .unwrap();
+        encoded_file.write_all(&encoded).unwrap();
+    }
+
+    // Decode the response with the zstd streaming function.
     let mut decoder = zstd_decode_stream(encoded.as_slice()).unwrap();
     let mut decoded = vec![];
     decoder.read_to_end(&mut decoded).unwrap();
 
     // Check that the output is the same as the payload.
     assert_eq!(payload.to_vec(), decoded);
+
+    let decoded_path = tmp_dir.path().join("decoded");
+    // Decode the file previously created with the zstd file streaming function.
+    stream_file_archive(encoded_path, decoded_path.clone()).unwrap();
+    // Read the decoded contents from the resulting file.
+    let mut decoded_file_contents = vec![];
+    OpenOptions::new()
+        .read(true)
+        .open(&decoded_path)
+        .unwrap()
+        .read_to_end(&mut decoded_file_contents)
+        .unwrap();
+
+    // Check that the output is the same as the payload.
+    assert_eq!(payload.to_vec(), decoded_file_contents);
 }
 
 #[test]
-fn archive_get_with_decode() {
+fn archive_unpack_decode_network() {
     let mut rng = rand::thread_rng();
     // Generate a random payload.
     let mut payload = [0u8; 100];
@@ -129,7 +158,7 @@ fn archive_get_with_decode() {
 }
 
 #[test]
-fn archive_get_invalid_url() {
+fn archive_unpack_invalid_url() {
     let temp_dir = tempfile::tempdir().unwrap();
     let dest_path = temp_dir.path().join("file.bin");
 
@@ -140,7 +169,7 @@ fn archive_get_invalid_url() {
 }
 
 #[test]
-fn archive_get_existing_destination() {
+fn archive_unpack_existing_destination() {
     // Create the directory where we save the downloaded file.
     let temp_dir = tempfile::tempdir().unwrap();
     let dest_path = temp_dir.path().join("file.bin");
@@ -154,4 +183,41 @@ fn archive_get_existing_destination() {
     // Download should fail because the file is already present. Address doesn't
     // matter because the file check is performed first.
     assert!(download_archive("bogus_address", dest_path).is_err());
+}
+
+#[test]
+fn archive_unpack_missing_file() {
+    // Create the directory where we save the downloaded file.
+    let temp_dir = tempfile::tempdir().unwrap();
+    let missing_src_path = temp_dir.path().join("file.bin");
+
+    // Streaming from file should fail because the source is missing. Destination
+    // doesn't matter because the source check is performed first.
+    assert!(stream_file_archive(missing_src_path, "bogus_path".into()).is_err());
+}
+
+#[test]
+fn archive_unpack_file_existing_destination() {
+    // Create the directory where we save the downloaded file.
+    let temp_dir = tempfile::tempdir().unwrap();
+    let src_path = temp_dir.path().join("src_file");
+    let dest_path = temp_dir.path().join("dst_file");
+
+    // Create the source file before streaming.
+    let _ = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&src_path)
+        .unwrap();
+
+    // Create the destination file before streaming.
+    let _ = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&dest_path)
+        .unwrap();
+    // File streaming should fail because the destination file is already present.
+    // The source doesn't matter because the existing destination check is
+    // performed first.
+    assert!(stream_file_archive(src_path, dest_path).is_err());
 }
