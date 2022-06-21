@@ -9,8 +9,8 @@ use futures::{io, AsyncRead, AsyncReadExt, TryStreamExt};
 use log::info;
 use tokio::runtime::{Builder as TokioRuntimeBuilder, Runtime};
 
-use super::zstd_decode;
 use super::Error;
+use crate::subcommands::archive::zstd_utils;
 
 pub struct StreamPipe {
     runtime: Runtime,
@@ -84,7 +84,7 @@ pub fn download_archive(url: &str, dest: PathBuf) -> Result<(), Error> {
         .build()
         .map_err(Error::Runtime)?;
     let stream_pipe = StreamPipe::new(runtime, url)?;
-    let mut decoder = zstd_decode::zstd_decode_stream(stream_pipe)?;
+    let mut decoder = zstd_utils::zstd_decode_stream(stream_pipe)?;
     let decoded_bytes = std_io::copy(&mut decoder, &mut output_file).map_err(Error::Streaming)?;
     info!("Download complete.");
     info!("Decoded {} bytes.", decoded_bytes);

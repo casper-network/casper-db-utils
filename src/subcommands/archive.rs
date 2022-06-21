@@ -5,6 +5,7 @@ use clap::{ArgMatches, Command};
 mod create;
 mod tar_utils;
 mod unpack;
+mod zstd_utils;
 
 pub const COMMAND_NAME: &str = "archive";
 

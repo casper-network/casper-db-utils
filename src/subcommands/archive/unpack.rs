@@ -2,7 +2,6 @@ mod download_stream;
 mod file_stream;
 #[cfg(test)]
 mod tests;
-mod zstd_decode;
 
 use std::{io::Error as IoError, path::PathBuf};
 
@@ -11,7 +10,7 @@ use log::{error, warn};
 use reqwest::Error as ReqwestError;
 use thiserror::Error as ThisError;
 
-use super::tar_utils;
+use super::{tar_utils, zstd_utils::Error as ZstdError};
 
 pub const COMMAND_NAME: &str = "unpack";
 const FILE: &str = "file";
@@ -32,8 +31,8 @@ pub enum Error {
     Streaming(IoError),
     #[error("Error unpacking tarball: {0}")]
     Tar(IoError),
-    #[error("Error setting up zstd decoder: {0}")]
-    ZstdDecoderSetup(IoError),
+    #[error("Zstd error: {0}")]
+    ZstdDecoderSetup(#[from] ZstdError),
 }
 
 enum DisplayOrder {

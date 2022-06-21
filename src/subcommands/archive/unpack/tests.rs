@@ -9,9 +9,9 @@ use std::{
 use rand::{self, RngCore};
 use zstd::Encoder;
 
-use crate::subcommands::archive::unpack::file_stream::stream_file_archive;
+use crate::subcommands::archive::{unpack::file_stream, zstd_utils};
 
-use super::{download_stream::download_archive, zstd_decode::zstd_decode_stream};
+use super::download_stream::download_archive;
 
 const TEST_ADDR: &str = "127.0.0.1:9876";
 
@@ -82,7 +82,7 @@ fn zstd_decode_roundtrip() {
     }
 
     // Decode the response with the zstd streaming function.
-    let mut decoder = zstd_decode_stream(encoded.as_slice()).unwrap();
+    let mut decoder = zstd_utils::zstd_decode_stream(encoded.as_slice()).unwrap();
     let mut decoded = vec![];
     decoder.read_to_end(&mut decoded).unwrap();
 
@@ -91,7 +91,7 @@ fn zstd_decode_roundtrip() {
 
     let decoded_path = tmp_dir.path().join("decoded");
     // Decode the file previously created with the zstd file streaming function.
-    stream_file_archive(encoded_path, decoded_path.clone()).unwrap();
+    file_stream::stream_file_archive(encoded_path, decoded_path.clone()).unwrap();
     // Read the decoded contents from the resulting file.
     let mut decoded_file_contents = vec![];
     OpenOptions::new()
@@ -193,7 +193,7 @@ fn archive_unpack_missing_file() {
 
     // Streaming from file should fail because the source is missing. Destination
     // doesn't matter because the source check is performed first.
-    assert!(stream_file_archive(missing_src_path, "bogus_path".into()).is_err());
+    assert!(file_stream::stream_file_archive(missing_src_path, "bogus_path".into()).is_err());
 }
 
 #[test]
@@ -219,5 +219,5 @@ fn archive_unpack_file_existing_destination() {
     // File streaming should fail because the destination file is already present.
     // The source doesn't matter because the existing destination check is
     // performed first.
-    assert!(stream_file_archive(src_path, dest_path).is_err());
+    assert!(file_stream::stream_file_archive(src_path, dest_path).is_err());
 }

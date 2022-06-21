@@ -8,10 +8,14 @@ use std::{
 
 use log::{info, warn};
 
-use super::{zstd_encode, Error};
-use crate::subcommands::archive::tar_utils;
+use super::Error;
+use crate::subcommands::archive::{tar_utils, zstd_utils};
 
-pub fn create_archive(db_path: PathBuf, dest: PathBuf) -> Result<(), Error> {
+pub fn create_archive(
+    db_path: PathBuf,
+    dest: PathBuf,
+    require_checksums: bool,
+) -> Result<(), Error> {
     let temp_tarball_path = dest.join("/tmp/temp_casper_db.tar");
     info!(
         "Packing contents at {} to tarball.",
@@ -35,7 +39,7 @@ pub fn create_archive(db_path: PathBuf, dest: PathBuf) -> Result<(), Error> {
         .open(&dest)
         .map_err(Error::Destination)?;
 
-    let mut encoder = zstd_encode::zstd_encode_stream(output_file)?;
+    let mut encoder = zstd_utils::zstd_encode_stream(output_file, require_checksums)?;
     let _ = std_io::copy(&mut temp_tarball_file, &mut encoder).map_err(Error::Streaming)?;
     encoder.finish().map_err(Error::Streaming)?;
     info!(
