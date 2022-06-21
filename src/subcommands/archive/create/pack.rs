@@ -1,8 +1,7 @@
-use std::io::BufReader;
-use std::path::Path;
 use std::{
     fs::{self, OpenOptions},
-    io as std_io,
+    io::{self as std_io, BufReader},
+    path::{Path, PathBuf},
     result::Result,
 };
 
@@ -16,7 +15,7 @@ pub fn create_archive<P1: AsRef<Path>, P2: AsRef<Path>>(
     dest: P2,
     require_checksums: bool,
 ) -> Result<(), Error> {
-    let temp_tarball_path = dest.as_ref().join("/tmp/temp_casper_db.tar");
+    let temp_tarball_path: PathBuf = "/tmp/temp_casper_db.tar".into();
     info!(
         "Packing contents at {} to tarball.",
         db_path.as_ref().as_os_str().to_string_lossy()

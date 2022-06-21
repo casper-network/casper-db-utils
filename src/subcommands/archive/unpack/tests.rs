@@ -9,9 +9,7 @@ use std::{
 use rand::{self, RngCore};
 use zstd::Encoder;
 
-use crate::subcommands::archive::{unpack::file_stream, zstd_utils};
-
-use super::download_stream::download_archive;
+use crate::subcommands::archive::{unpack::{download_stream, file_stream}, zstd_utils};
 
 const TEST_ADDR: &str = "127.0.0.1:9876";
 
@@ -138,7 +136,7 @@ fn archive_unpack_decode_network() {
     http_addr.push_str(TEST_ADDR);
 
     // Download the file with zstd encoding.
-    download_archive(&http_addr, &dest_path).expect("Error downloading and decoding payload");
+    download_stream::download_archive(&http_addr, &dest_path).expect("Error downloading and decoding payload");
 
     // Check that the downloaded contents are the same as our payload.
     let mut dest_file = OpenOptions::new()
@@ -162,9 +160,9 @@ fn archive_unpack_invalid_url() {
     let dest_path = temp_dir.path().join("file.bin");
 
     // No HTTP schema.
-    assert!(download_archive("localhost:10000", &dest_path).is_err());
+    assert!(download_stream::download_archive("localhost:10000", &dest_path).is_err());
     // No server running at `localhost:10000`.
-    assert!(download_archive("http://localhost:10000", dest_path).is_err());
+    assert!(download_stream::download_archive("http://localhost:10000", dest_path).is_err());
 }
 
 #[test]
@@ -181,7 +179,7 @@ fn archive_unpack_existing_destination() {
         .unwrap();
     // Download should fail because the file is already present. Address doesn't
     // matter because the file check is performed first.
-    assert!(download_archive("bogus_address", dest_path).is_err());
+    assert!(download_stream::download_archive("bogus_address", dest_path).is_err());
 }
 
 #[test]
