@@ -32,12 +32,10 @@ pub fn unarchive(src: PathBuf, dest: PathBuf) -> Result<(), IoError> {
 #[cfg(test)]
 mod tests {
     use std::{
-        env,
         fs::{self, OpenOptions},
         io::{Read, Write},
     };
 
-    use pathdiff;
     use tempfile::{self, NamedTempFile};
 
     #[test]
@@ -45,7 +43,6 @@ mod tests {
         let src_dir = tempfile::tempdir_in(".").unwrap();
         let num_files = 10usize;
         let mut test_files = vec![];
-        let cur_dir = env::current_dir().unwrap();
 
         for idx in 0..num_files {
             let mut file = NamedTempFile::new_in(src_dir.path()).unwrap();
@@ -54,11 +51,10 @@ mod tests {
             test_files.push(file);
         }
 
-        let src_dir_relative_path = pathdiff::diff_paths(src_dir.path(), &cur_dir).unwrap();
         let dst_dir = tempfile::tempdir_in(".").unwrap();
         let archive_path = dst_dir.path().to_path_buf().join("archive.tar");
 
-        super::archive(&src_dir_relative_path, &archive_path).unwrap();
+        super::archive(&src_dir.path().to_path_buf(), &archive_path).unwrap();
         super::unarchive(archive_path.clone(), dst_dir.path().to_path_buf()).unwrap();
 
         fs::remove_file(&archive_path).unwrap();

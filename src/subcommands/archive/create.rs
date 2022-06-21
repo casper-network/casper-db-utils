@@ -47,7 +47,7 @@ pub fn command(display_order: usize) -> Command<'static> {
                 .long(DB)
                 .takes_value(true)
                 .value_name("DIR_PATH")
-                .help("Path to the database directory. Only accepts relative paths."),
+                .help("Path to the database directory."),
         )
         .arg(
             Arg::new(OUTPUT)
