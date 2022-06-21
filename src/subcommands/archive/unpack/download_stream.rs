@@ -1,7 +1,7 @@
 use std::{
     fs::OpenOptions,
     io::{self as std_io, Read},
-    path::PathBuf,
+    path::Path,
     result::Result,
 };
 
@@ -72,7 +72,7 @@ impl Read for StreamPipe {
     }
 }
 
-pub fn download_archive(url: &str, dest: PathBuf) -> Result<(), Error> {
+pub fn download_archive<P: AsRef<Path>>(url: &str, dest: P) -> Result<(), Error> {
     let mut output_file = OpenOptions::new()
         .create_new(true)
         .write(true)

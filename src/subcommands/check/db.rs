@@ -28,7 +28,7 @@ pub use transfer_hashes_db::TransferHashesDatabase;
 
 use std::{
     fmt::{Display, Formatter, Result as FormatterResult},
-    path::PathBuf,
+    path::Path,
     result::Result,
 };
 
@@ -83,7 +83,7 @@ impl Display for Error {
     }
 }
 
-pub fn db_env(path: PathBuf) -> Result<Environment, Error> {
+pub fn db_env<P: AsRef<Path>>(path: P) -> Result<Environment, Error> {
     let env = Environment::new()
         .set_flags(
             EnvironmentFlags::NO_SUB_DIR
@@ -91,7 +91,7 @@ pub fn db_env(path: PathBuf) -> Result<Environment, Error> {
                 | EnvironmentFlags::NO_READAHEAD,
         )
         .set_max_dbs(MAX_DB_READERS)
-        .open(&path)?;
+        .open(path.as_ref())?;
     Ok(env)
 }
 

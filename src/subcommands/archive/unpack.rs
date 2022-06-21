@@ -3,7 +3,10 @@ mod file_stream;
 #[cfg(test)]
 mod tests;
 
-use std::{io::Error as IoError, path::PathBuf};
+use std::{
+    io::Error as IoError,
+    path::{Path, PathBuf},
+};
 
 use clap::{Arg, ArgMatches, Command};
 use log::{error, warn};
@@ -46,18 +49,18 @@ enum Input {
     Url(String),
 }
 
-fn unpack(input: Input, dest: PathBuf) -> Result<(), Error> {
-    let dest_archive_path = dest.as_path().join("casper_db_archive.tar.zst");
+fn unpack<P: AsRef<Path>>(input: Input, dest: P) -> Result<(), Error> {
+    let dest_archive_path = dest.as_ref().join("casper_db_archive.tar.zst");
     match input {
         Input::Url(url) => {
-            download_stream::download_archive(&url, dest_archive_path.clone())?;
+            download_stream::download_archive(&url, &dest_archive_path)?;
         }
         Input::File(path) => {
-            file_stream::stream_file_archive(path, dest_archive_path.clone())?;
+            file_stream::stream_file_archive(path, &dest_archive_path)?;
         }
     }
-    tar_utils::unarchive(dest_archive_path.clone(), dest).map_err(Error::Tar)?;
-    if let Err(io_err) = std::fs::remove_file(dest_archive_path.clone()) {
+    tar_utils::unarchive(&dest_archive_path, dest.as_ref()).map_err(Error::Tar)?;
+    if let Err(io_err) = std::fs::remove_file(&dest_archive_path) {
         warn!(
             "Couldn't remove tarball at {} after unpacking: {}",
             dest_archive_path.as_os_str().to_string_lossy(),
@@ -117,7 +120,7 @@ pub fn run(matches: &ArgMatches) -> bool {
                 .unwrap_or_else(|| panic!("Should have one of {} or {}", FILE, URL))
         });
     let dest = matches.value_of(OUTPUT).unwrap();
-    let result = unpack(input, dest.into());
+    let result = unpack(input, dest);
 
     if let Err(error) = &result {
         error!("Archive unpack failed. {}", error);

@@ -125,9 +125,9 @@ pub fn run(matches: &ArgMatches) -> bool {
         .expect("Value of \"--max-db-size\" must be an integer.");
 
     let result = compact::trie_compact(
-        storage_path.into(),
-        source_trie_path.into(),
-        destination_trie_path.into(),
+        storage_path,
+        source_trie_path,
+        destination_trie_path,
         dest_opt,
         max_db_size,
     );

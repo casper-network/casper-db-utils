@@ -1,11 +1,14 @@
-use std::{fs::OpenOptions, io as std_io, path::PathBuf, result::Result};
+use std::{fs::OpenOptions, io as std_io, path::Path, result::Result};
 
 use log::info;
 
 use super::Error;
 use crate::subcommands::archive::zstd_utils;
 
-pub fn stream_file_archive(path: PathBuf, dest: PathBuf) -> Result<(), Error> {
+pub fn stream_file_archive<P1: AsRef<Path>, P2: AsRef<Path>>(
+    path: P1,
+    dest: P2,
+) -> Result<(), Error> {
     let input_file = OpenOptions::new()
         .read(true)
         .open(path)

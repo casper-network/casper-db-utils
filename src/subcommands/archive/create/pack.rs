@@ -1,8 +1,8 @@
 use std::io::BufReader;
+use std::path::Path;
 use std::{
     fs::{self, OpenOptions},
     io as std_io,
-    path::PathBuf,
     result::Result,
 };
 
@@ -11,17 +11,17 @@ use log::{info, warn};
 use super::Error;
 use crate::subcommands::archive::{tar_utils, zstd_utils};
 
-pub fn create_archive(
-    db_path: PathBuf,
-    dest: PathBuf,
+pub fn create_archive<P1: AsRef<Path>, P2: AsRef<Path>>(
+    db_path: P1,
+    dest: P2,
     require_checksums: bool,
 ) -> Result<(), Error> {
-    let temp_tarball_path = dest.join("/tmp/temp_casper_db.tar");
+    let temp_tarball_path = dest.as_ref().join("/tmp/temp_casper_db.tar");
     info!(
         "Packing contents at {} to tarball.",
-        db_path.as_os_str().to_string_lossy()
+        db_path.as_ref().as_os_str().to_string_lossy()
     );
-    tar_utils::archive(&db_path, &temp_tarball_path).map_err(Error::Tar)?;
+    tar_utils::archive(db_path, &temp_tarball_path).map_err(Error::Tar)?;
     info!(
         "Successfully created temporary tarball at {}",
         temp_tarball_path.as_os_str().to_string_lossy()
@@ -44,7 +44,7 @@ pub fn create_archive(
     encoder.finish().map_err(Error::Streaming)?;
     info!(
         "Finished encoding tarball with ZSTD, compressed archive at {}",
-        dest.as_os_str().to_string_lossy()
+        dest.as_ref().as_os_str().to_string_lossy()
     );
     if let Err(io_err) = fs::remove_file(&temp_tarball_path) {
         warn!(

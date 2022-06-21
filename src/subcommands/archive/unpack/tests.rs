@@ -91,7 +91,7 @@ fn zstd_decode_roundtrip() {
 
     let decoded_path = tmp_dir.path().join("decoded");
     // Decode the file previously created with the zstd file streaming function.
-    file_stream::stream_file_archive(encoded_path, decoded_path.clone()).unwrap();
+    file_stream::stream_file_archive(&encoded_path, &decoded_path).unwrap();
     // Read the decoded contents from the resulting file.
     let mut decoded_file_contents = vec![];
     OpenOptions::new()
@@ -138,8 +138,7 @@ fn archive_unpack_decode_network() {
     http_addr.push_str(TEST_ADDR);
 
     // Download the file with zstd encoding.
-    download_archive(&http_addr, dest_path.clone())
-        .expect("Error downloading and decoding payload");
+    download_archive(&http_addr, &dest_path).expect("Error downloading and decoding payload");
 
     // Check that the downloaded contents are the same as our payload.
     let mut dest_file = OpenOptions::new()
@@ -163,7 +162,7 @@ fn archive_unpack_invalid_url() {
     let dest_path = temp_dir.path().join("file.bin");
 
     // No HTTP schema.
-    assert!(download_archive("localhost:10000", dest_path.clone()).is_err());
+    assert!(download_archive("localhost:10000", &dest_path).is_err());
     // No server running at `localhost:10000`.
     assert!(download_archive("http://localhost:10000", dest_path).is_err());
 }
@@ -193,7 +192,7 @@ fn archive_unpack_missing_file() {
 
     // Streaming from file should fail because the source is missing. Destination
     // doesn't matter because the source check is performed first.
-    assert!(file_stream::stream_file_archive(missing_src_path, "bogus_path".into()).is_err());
+    assert!(file_stream::stream_file_archive(missing_src_path, "bogus_path").is_err());
 }
 
 #[test]

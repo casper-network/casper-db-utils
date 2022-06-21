@@ -1,13 +1,13 @@
 use std::{
     fs::{self, OpenOptions},
     io::{BufReader, Error as IoError},
-    path::PathBuf,
+    path::Path,
 };
 
 use log::info;
 use tar::{Archive, Builder};
 
-pub fn archive(dir: &PathBuf, tarball_path: &PathBuf) -> Result<(), IoError> {
+pub fn archive<P1: AsRef<Path>, P2: AsRef<Path>>(dir: P1, tarball_path: P2) -> Result<(), IoError> {
     let temp_tarball_file = OpenOptions::new()
         .create(true)
         .truncate(true)
@@ -22,7 +22,7 @@ pub fn archive(dir: &PathBuf, tarball_path: &PathBuf) -> Result<(), IoError> {
     tarball_stream.finish()
 }
 
-pub fn unarchive(src: PathBuf, dest: PathBuf) -> Result<(), IoError> {
+pub fn unarchive<P1: AsRef<Path>, P2: AsRef<Path>>(src: P1, dest: P2) -> Result<(), IoError> {
     let input = OpenOptions::new().read(true).open(src)?;
     let mut archive = Archive::new(BufReader::new(input));
     archive.unpack(dest)?;
@@ -54,8 +54,8 @@ mod tests {
         let dst_dir = tempfile::tempdir_in(".").unwrap();
         let archive_path = dst_dir.path().to_path_buf().join("archive.tar");
 
-        super::archive(&src_dir.path().to_path_buf(), &archive_path).unwrap();
-        super::unarchive(archive_path.clone(), dst_dir.path().to_path_buf()).unwrap();
+        super::archive(&src_dir, &archive_path).unwrap();
+        super::unarchive(&archive_path, &dst_dir).unwrap();
 
         fs::remove_file(&archive_path).unwrap();
 

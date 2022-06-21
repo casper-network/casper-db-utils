@@ -100,7 +100,7 @@ fn check_db(
     specific: Option<&str>,
     start_at: usize,
 ) -> Result<(), Error> {
-    let env = db_env(path.into()).expect("Failed to initialize DB environment");
+    let env = db_env(path).expect("Failed to initialize DB environment");
     if let Some(db_name) = specific {
         match db_name.trim() {
             "block_body" => BlockBodyDatabase::check_db(&env, failfast, start_at),
