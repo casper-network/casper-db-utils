@@ -17,6 +17,8 @@ const DB: &str = "db";
 
 #[derive(Debug, ThisError)]
 pub enum Error {
+    #[error("Archiving contents into tarball failed")]
+    ArchiveStream,
     #[error("Error creating destination archive file: {0}")]
     Destination(IoError),
     #[error("Error streaming from tarball to zstd encoder: {0}")]
@@ -72,7 +74,7 @@ pub fn run(matches: &ArgMatches) -> bool {
     let db_path = matches.value_of(DB).unwrap();
     let dest = matches.value_of(OUTPUT).unwrap();
     let require_checksums = !matches.is_present(NO_CHECKSUMS);
-    let result = pack::create_archive(db_path, dest, require_checksums);
+    let result = pack::create_archive_streamed(db_path, dest, require_checksums);
 
     if let Err(error) = &result {
         error!("Archive packing failed. {}", error);

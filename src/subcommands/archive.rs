@@ -3,6 +3,7 @@ use std::process;
 use clap::{ArgMatches, Command};
 
 mod create;
+mod ring_buffer;
 mod tar_utils;
 mod unpack;
 mod zstd_utils;

@@ -3,13 +3,25 @@ use std::{
     io::{self as std_io, BufReader},
     path::{Path, PathBuf},
     result::Result,
+    thread,
 };
 
 use log::{info, warn};
 
 use super::Error;
-use crate::subcommands::archive::{tar_utils, zstd_utils};
+use crate::subcommands::archive::{
+    ring_buffer::BlockingRingBuffer,
+    tar_utils::{self, ArchiveStream},
+    zstd_utils,
+};
 
+#[cfg(not(test))]
+// 500 MiB.
+const BUFFER_CAPACITY: usize = 500 * 1024 * 1024;
+#[cfg(test)]
+const BUFFER_CAPACITY: usize = 1_000;
+
+#[allow(unused)]
 pub fn create_archive<P1: AsRef<Path>, P2: AsRef<Path>>(
     db_path: P1,
     dest: P2,
@@ -53,4 +65,44 @@ pub fn create_archive<P1: AsRef<Path>, P2: AsRef<Path>>(
         );
     }
     Ok(())
+}
+
+pub fn create_archive_streamed<P1: AsRef<Path>, P2: AsRef<Path>>(
+    db_path: P1,
+    dest: P2,
+    require_checksums: bool,
+) -> Result<(), Error> {
+    let ring_buffer = BlockingRingBuffer::new(BUFFER_CAPACITY);
+    let (producer, mut consumer) = ring_buffer.split();
+
+    let db_path_copy = db_path.as_ref().to_path_buf();
+    let handle = thread::spawn(move || {
+        let mut archive_stream = ArchiveStream::new(&db_path_copy, producer).unwrap_or_else(|_| {
+            panic!(
+                "Couldn't read files from {}",
+                db_path_copy.to_string_lossy()
+            )
+        });
+        archive_stream.pack().expect("Couldn't archive files");
+    });
+
+    let output_file = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&dest)
+        .map_err(Error::Destination)?;
+
+    let mut encoder = zstd_utils::zstd_encode_stream(output_file, require_checksums)?;
+    let _ = std_io::copy(&mut consumer, &mut encoder).map_err(Error::Streaming)?;
+    encoder.finish().map_err(Error::Streaming)?;
+
+    handle
+        .join()
+        .map(|_| {
+            info!(
+                "Finished encoding tarball with ZSTD, compressed archive at {}",
+                dest.as_ref().as_os_str().to_string_lossy()
+            )
+        })
+        .map_err(|_| Error::ArchiveStream)
 }

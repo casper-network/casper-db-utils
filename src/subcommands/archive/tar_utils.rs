@@ -1,12 +1,48 @@
 use std::{
+    collections::VecDeque,
     fs::{self, OpenOptions},
     io::{Error as IoError, Read},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use log::info;
 use tar::{Archive, Builder};
 
+use super::ring_buffer::BlockingProducer;
+
+pub struct ArchiveStream {
+    file_paths: VecDeque<PathBuf>,
+    builder: Builder<BlockingProducer>,
+}
+
+impl ArchiveStream {
+    pub fn new<P: AsRef<Path>>(dir: P, producer: BlockingProducer) -> Result<Self, IoError> {
+        let mut file_paths = VecDeque::new();
+        for entry in fs::read_dir(dir)?.flatten() {
+            file_paths.push_back(entry.path());
+        }
+
+        Ok(Self {
+            file_paths,
+            builder: Builder::new(producer),
+        })
+    }
+
+    pub fn pack(&mut self) -> Result<(), IoError> {
+        while let Some(path) = self.file_paths.pop_front() {
+            let mut file = OpenOptions::new()
+                .read(true)
+                .open(&path)
+                .expect("can't open file");
+            info!("Adding {} to the archive.", path.to_string_lossy());
+            self.builder
+                .append_file(path.file_name().expect("invalid path"), &mut file)?;
+        }
+        self.builder.finish()
+    }
+}
+
+#[allow(unused)]
 pub fn archive<P1: AsRef<Path>, P2: AsRef<Path>>(dir: P1, tarball_path: P2) -> Result<(), IoError> {
     let temp_tarball_file = OpenOptions::new()
         .create(true)
