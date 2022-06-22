@@ -1,6 +1,6 @@
 use std::{
     fs::{self, OpenOptions},
-    io::{BufReader, Error as IoError},
+    io::{Error as IoError, Read},
     path::Path,
 };
 
@@ -22,11 +22,8 @@ pub fn archive<P1: AsRef<Path>, P2: AsRef<Path>>(dir: P1, tarball_path: P2) -> R
     tarball_stream.finish()
 }
 
-pub fn unarchive<P1: AsRef<Path>, P2: AsRef<Path>>(src: P1, dest: P2) -> Result<(), IoError> {
-    let input = OpenOptions::new().read(true).open(src)?;
-    let mut archive = Archive::new(BufReader::new(input));
-    archive.unpack(dest)?;
-    Ok(())
+pub fn unarchive_stream<R: Read + Sized>(stream: R) -> Archive<R> {
+    Archive::new(stream)
 }
 
 #[cfg(test)]
@@ -55,7 +52,12 @@ mod tests {
         let archive_path = dst_dir.path().to_path_buf().join("archive.tar");
 
         super::archive(&src_dir, &archive_path).unwrap();
-        super::unarchive(&archive_path, &dst_dir).unwrap();
+
+        {
+            let archive_file = OpenOptions::new().read(true).open(&archive_path).unwrap();
+            let mut archive = super::unarchive_stream(archive_file);
+            archive.unpack(&dst_dir).unwrap();
+        }
 
         fs::remove_file(&archive_path).unwrap();
 

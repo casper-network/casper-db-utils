@@ -9,11 +9,11 @@ use std::{
 };
 
 use clap::{Arg, ArgMatches, Command};
-use log::{error, warn};
+use log::error;
 use reqwest::Error as ReqwestError;
 use thiserror::Error as ThisError;
 
-use super::{tar_utils, zstd_utils::Error as ZstdError};
+use super::zstd_utils::Error as ZstdError;
 
 pub const COMMAND_NAME: &str = "unpack";
 const FILE: &str = "file";
@@ -22,8 +22,6 @@ const URL: &str = "url";
 
 #[derive(Debug, ThisError)]
 pub enum Error {
-    #[error("Error creating destination archive file: {0}")]
-    Destination(IoError),
     #[error("HTTP request error: {0}")]
     Request(#[from] ReqwestError),
     #[error("Error creating tokio runtime: {0}")]
@@ -32,8 +30,6 @@ pub enum Error {
     Source(IoError),
     #[error("Error streaming from zstd decoder to destination file: {0}")]
     Streaming(IoError),
-    #[error("Error unpacking tarball: {0}")]
-    Tar(IoError),
     #[error("Zstd error: {0}")]
     ZstdDecoderSetup(#[from] ZstdError),
 }
@@ -50,25 +46,10 @@ enum Input {
 }
 
 fn unpack<P: AsRef<Path>>(input: Input, dest: P) -> Result<(), Error> {
-    let dest_archive_path = dest.as_ref().join("casper_db_archive.tar.zst");
     match input {
-        Input::Url(url) => {
-            download_stream::download_archive(&url, &dest_archive_path)?;
-        }
-        Input::File(path) => {
-            file_stream::stream_file_archive(path, &dest_archive_path)?;
-        }
+        Input::Url(url) => download_stream::download_and_unpack_archive(&url, dest),
+        Input::File(path) => file_stream::file_stream_and_unpack_archive(path, dest),
     }
-    tar_utils::unarchive(&dest_archive_path, dest.as_ref()).map_err(Error::Tar)?;
-    if let Err(io_err) = std::fs::remove_file(&dest_archive_path) {
-        warn!(
-            "Couldn't remove tarball at {} after unpacking: {}",
-            dest_archive_path.as_os_str().to_string_lossy(),
-            io_err
-        );
-    }
-
-    Ok(())
 }
 
 pub fn command(display_order: usize) -> Command<'static> {

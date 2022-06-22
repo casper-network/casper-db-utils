@@ -1,18 +1,13 @@
-use std::{
-    fs::OpenOptions,
-    io::{self as std_io, Read},
-    path::Path,
-    result::Result,
-};
+use std::{io::Read, path::Path, result::Result};
 
 use futures::{io, AsyncRead, AsyncReadExt, TryStreamExt};
 use log::info;
 use tokio::runtime::{Builder as TokioRuntimeBuilder, Runtime};
 
 use super::Error;
-use crate::subcommands::archive::zstd_utils;
+use crate::subcommands::archive::{tar_utils, zstd_utils};
 
-pub struct StreamPipe {
+pub struct HttpStream {
     runtime: Runtime,
     reader: Box<dyn AsyncRead + Unpin>,
     pub stream_length: Option<usize>,
@@ -20,7 +15,7 @@ pub struct StreamPipe {
     pub progress: u64,
 }
 
-impl StreamPipe {
+impl HttpStream {
     fn new(runtime: Runtime, url: &str) -> Result<Self, Error> {
         let response_future = async {
             let response_fut = reqwest::get(url).await;
@@ -57,7 +52,7 @@ impl StreamPipe {
     }
 }
 
-impl Read for StreamPipe {
+impl Read for HttpStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let fut = async { self.reader.read(buf).await };
         let bytes_read = self.runtime.block_on(fut)?;
@@ -72,21 +67,16 @@ impl Read for StreamPipe {
     }
 }
 
-pub fn download_archive<P: AsRef<Path>>(url: &str, dest: P) -> Result<(), Error> {
-    let mut output_file = OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(dest)
-        .map_err(Error::Destination)?;
+pub fn download_and_unpack_archive<P: AsRef<Path>>(url: &str, dest: P) -> Result<(), Error> {
     let runtime = TokioRuntimeBuilder::new_current_thread()
         .enable_time()
         .enable_io()
         .build()
         .map_err(Error::Runtime)?;
-    let stream_pipe = StreamPipe::new(runtime, url)?;
-    let mut decoder = zstd_utils::zstd_decode_stream(stream_pipe)?;
-    let decoded_bytes = std_io::copy(&mut decoder, &mut output_file).map_err(Error::Streaming)?;
+    let http_stream = HttpStream::new(runtime, url)?;
+    let decoder = zstd_utils::zstd_decode_stream(http_stream)?;
+    let mut unpacker = tar_utils::unarchive_stream(decoder);
+    unpacker.unpack(&dest).map_err(Error::Streaming)?;
     info!("Download complete.");
-    info!("Decoded {} bytes.", decoded_bytes);
     Ok(())
 }

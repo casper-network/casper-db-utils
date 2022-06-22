@@ -1,12 +1,13 @@
 use std::{
-    fs::{OpenOptions, self},
-    io::Write, path::Path,
+    fs::{self, OpenOptions},
+    io::Write,
+    path::Path,
 };
 
 use once_cell::sync::Lazy;
 use rand::{self, RngCore};
 use tar::Archive;
-use tempfile::{TempDir, NamedTempFile};
+use tempfile::{NamedTempFile, TempDir};
 use zstd::Decoder;
 
 use crate::subcommands::archive::create::pack;
@@ -17,12 +18,12 @@ const TEST_FILE_SIZE: usize = 10000usize;
 static MOCK_DIR: Lazy<(TempDir, TestPayloads)> = Lazy::new(create_mock_src_dir);
 
 struct TestPayloads {
-    pub payloads: [[u8; TEST_FILE_SIZE]; NUM_TEST_FILES]
+    pub payloads: [[u8; TEST_FILE_SIZE]; NUM_TEST_FILES],
 }
 
 fn create_mock_src_dir() -> (TempDir, TestPayloads) {
     let src_dir = tempfile::tempdir().unwrap();
-    
+
     let mut rng = rand::thread_rng();
     let mut payloads = [[0u8; TEST_FILE_SIZE]; NUM_TEST_FILES];
     for (idx, payload) in payloads.iter_mut().enumerate().take(NUM_TEST_FILES) {
@@ -79,5 +80,10 @@ fn archive_create_bad_input() {
 
     // Destination directory doesn't exist.
     let root_dst = tempfile::tempdir().unwrap();
-    assert!(pack::create_archive(&src_dir, root_dst.path().join("bogus_dest/test_archive.tar.zst"), false).is_err());
+    assert!(pack::create_archive(
+        &src_dir,
+        root_dst.path().join("bogus_dest/test_archive.tar.zst"),
+        false
+    )
+    .is_err());
 }
