@@ -91,3 +91,44 @@ impl Drop for BlockingProducer {
         *self.eof.write().expect("Poisoned lock") = true;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        io::{self, Error as IoError},
+        thread::{self, JoinHandle},
+    };
+
+    use rand::RngCore;
+
+    use super::BlockingRingBuffer;
+
+    const BUFFER_CAPACITY: usize = 10;
+
+    #[test]
+    fn ring_buffer_roundtrip() {
+        let mut rng = rand::thread_rng();
+        let mut original_payload = [0u8; 1000];
+        rng.fill_bytes(&mut original_payload);
+        let payload = original_payload.clone().to_vec();
+        let mut message: Vec<u8> = vec![];
+
+        let ring_buffer = BlockingRingBuffer::new(BUFFER_CAPACITY);
+        let (mut producer, mut consumer) = ring_buffer.split();
+
+        let producer_handle =
+            thread::spawn(move || io::copy(&mut payload.as_slice(), &mut producer));
+
+        let consumer_handle: JoinHandle<Result<Vec<u8>, IoError>> = thread::spawn(move || {
+            io::copy(&mut consumer, &mut message)?;
+            Ok(message)
+        });
+
+        assert!(producer_handle.join().is_ok());
+        let message = consumer_handle
+            .join()
+            .expect("Thread copying from consumer panicked")
+            .expect("Copying from consumer into message failed");
+        assert_eq!(original_payload, message.as_slice());
+    }
+}
