@@ -1,6 +1,6 @@
 use std::{
-    io::{ErrorKind, Read, Write},
-    sync::{Arc, RwLock},
+    io::{ErrorKind, Read, Result as IoResult, Write},
+    sync::{Arc, Condvar, Mutex},
 };
 
 use ringbuf::{Consumer, Producer, RingBuffer};
@@ -18,77 +18,114 @@ impl BlockingRingBuffer {
 
     pub fn split(self) -> (BlockingProducer, BlockingConsumer) {
         let (producer, consumer) = self.inner.split();
-        let eof = Arc::new(RwLock::new(false));
+        let condvar = Arc::new(Condvar::new());
+        let done = Arc::new(Mutex::new(false));
         (
-            BlockingProducer::new(producer, eof.clone()),
-            BlockingConsumer::new(consumer, eof),
+            BlockingProducer::new(producer, condvar.clone(), done.clone()),
+            BlockingConsumer::new(consumer, condvar, done),
         )
     }
 }
 
 pub struct BlockingConsumer {
-    pub inner: Consumer<u8>,
-    eof: Arc<RwLock<bool>>,
+    inner: Consumer<u8>,
+    condvar: Arc<Condvar>,
+    done: Arc<Mutex<bool>>,
 }
 
 impl BlockingConsumer {
-    pub fn new(inner: Consumer<u8>, eof: Arc<RwLock<bool>>) -> Self {
-        Self { inner, eof }
+    fn new(inner: Consumer<u8>, condvar: Arc<Condvar>, done: Arc<Mutex<bool>>) -> Self {
+        Self {
+            inner,
+            condvar,
+            done,
+        }
     }
 }
 
 impl Read for BlockingConsumer {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        match self.inner.read(buf) {
-            Ok(n) => Ok(n),
-            Err(io_err) if io_err.kind() == ErrorKind::WouldBlock => loop {
-                if *self.eof.read().expect("Poisoned lock") {
-                    return Ok(0);
+    fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
+        loop {
+            match self.inner.read(buf) {
+                Ok(bytes_read) => {
+                    let _done = self.done.lock().expect("poisoned lock");
+                    self.condvar.notify_one();
+                    return Ok(bytes_read);
                 }
-
-                std::thread::sleep(std::time::Duration::from_micros(10));
-                if let Ok(n) = self.inner.read(buf) {
-                    return Ok(n);
+                Err(io_err) if io_err.kind() == ErrorKind::WouldBlock => {
+                    let done = self
+                        .condvar
+                        .wait_while(self.done.lock().expect("poisoned lock"), |&mut done| {
+                            !done && self.inner.is_empty()
+                        })
+                        .expect("poisoned lock while waiting");
+                    if *done && self.inner.is_empty() {
+                        return Ok(0);
+                    }
                 }
-            },
-            Err(err) => Err(err),
+                Err(err) => return Err(err),
+            }
         }
+    }
+}
+
+impl Drop for BlockingConsumer {
+    fn drop(&mut self) {
+        *self.done.lock().expect("poisoned lock") = true;
+        self.condvar.notify_one();
     }
 }
 
 pub struct BlockingProducer {
-    pub inner: Producer<u8>,
-    eof: Arc<RwLock<bool>>,
+    inner: Producer<u8>,
+    condvar: Arc<Condvar>,
+    done: Arc<Mutex<bool>>,
 }
 
 impl BlockingProducer {
-    pub fn new(inner: Producer<u8>, eof: Arc<RwLock<bool>>) -> Self {
-        Self { inner, eof }
+    fn new(inner: Producer<u8>, condvar: Arc<Condvar>, done: Arc<Mutex<bool>>) -> Self {
+        Self {
+            inner,
+            condvar,
+            done,
+        }
     }
 }
 
 impl Write for BlockingProducer {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        match self.inner.write(buf) {
-            Ok(n) => Ok(n),
-            Err(io_err) if io_err.kind() == ErrorKind::WouldBlock => loop {
-                std::thread::sleep(std::time::Duration::from_millis(1));
-                if let Ok(n) = self.inner.write(buf) {
-                    return Ok(n);
+    fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
+        loop {
+            match self.inner.write(buf) {
+                Ok(bytes_written) => {
+                    let _done = self.done.lock().expect("poisoned lock");
+                    self.condvar.notify_one();
+                    return Ok(bytes_written);
                 }
-            },
-            Err(err) => Err(err),
+                Err(io_err) if io_err.kind() == ErrorKind::WouldBlock => {
+                    let done = self
+                        .condvar
+                        .wait_while(self.done.lock().expect("poisoned lock"), |&mut done| {
+                            !done && self.inner.is_full()
+                        })
+                        .expect("poisoned lock while waiting");
+                    if *done && self.inner.is_full() {
+                        return Ok(0);
+                    }
+                }
+                Err(err) => return Err(err),
+            }
         }
     }
 
-    fn flush(&mut self) -> std::io::Result<()> {
+    fn flush(&mut self) -> IoResult<()> {
         Ok(())
     }
 }
 
 impl Drop for BlockingProducer {
     fn drop(&mut self) {
-        *self.eof.write().expect("Poisoned lock") = true;
+        *self.done.lock().expect("poisoned lock") = true;
+        self.condvar.notify_one();
     }
 }
 
