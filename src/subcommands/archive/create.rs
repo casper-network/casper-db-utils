@@ -23,8 +23,6 @@ pub enum Error {
     Destination(IoError),
     #[error("Error streaming from tarball to zstd encoder: {0}")]
     Streaming(IoError),
-    #[error("Error packing tarball: {0}")]
-    Tar(IoError),
     #[error("Zstd error: {0}")]
     ZstdEncoderSetup(#[from] ZstdError),
 }
@@ -74,7 +72,7 @@ pub fn run(matches: &ArgMatches) -> bool {
     let db_path = matches.value_of(DB).unwrap();
     let dest = matches.value_of(OUTPUT).unwrap();
     let require_checksums = !matches.is_present(NO_CHECKSUMS);
-    let result = pack::create_archive_streamed(db_path, dest, require_checksums);
+    let result = pack::create_archive(db_path, dest, require_checksums);
 
     if let Err(error) = &result {
         error!("Archive packing failed. {}", error);

@@ -1,22 +1,20 @@
 use std::{
     collections::VecDeque,
     fs::{self, OpenOptions},
-    io::{Error as IoError, Read},
+    io::{Error as IoError, Read, Write},
     path::{Path, PathBuf},
 };
 
 use log::info;
 use tar::{Archive, Builder};
 
-use super::ring_buffer::BlockingProducer;
-
-pub struct ArchiveStream {
+pub struct ArchiveStream<W: Write> {
     file_paths: VecDeque<PathBuf>,
-    builder: Builder<BlockingProducer>,
+    builder: Builder<W>,
 }
 
-impl ArchiveStream {
-    pub fn new<P: AsRef<Path>>(dir: P, producer: BlockingProducer) -> Result<Self, IoError> {
+impl<W: Write> ArchiveStream<W> {
+    pub fn new<P: AsRef<Path>>(dir: P, writer: W) -> Result<Self, IoError> {
         let mut file_paths = VecDeque::new();
         for entry in fs::read_dir(dir)?.flatten() {
             file_paths.push_back(entry.path());
@@ -24,7 +22,7 @@ impl ArchiveStream {
 
         Ok(Self {
             file_paths,
-            builder: Builder::new(producer),
+            builder: Builder::new(writer),
         })
     }
 
@@ -42,22 +40,6 @@ impl ArchiveStream {
     }
 }
 
-#[allow(unused)]
-pub fn archive<P1: AsRef<Path>, P2: AsRef<Path>>(dir: P1, tarball_path: P2) -> Result<(), IoError> {
-    let temp_tarball_file = OpenOptions::new()
-        .create(true)
-        .truncate(true)
-        .write(true)
-        .open(tarball_path)?;
-    let mut tarball_stream = Builder::new(temp_tarball_file);
-    for entry in fs::read_dir(dir)?.flatten() {
-        info!("Adding {} to the archive.", entry.path().to_string_lossy());
-        let mut file = OpenOptions::new().read(true).open(entry.path())?;
-        tarball_stream.append_file(entry.file_name(), &mut file)?;
-    }
-    tarball_stream.finish()
-}
-
 pub fn unarchive_stream<R: Read + Sized>(stream: R) -> Archive<R> {
     Archive::new(stream)
 }
@@ -70,6 +52,8 @@ mod tests {
     };
 
     use tempfile::{self, NamedTempFile};
+
+    use super::ArchiveStream;
 
     #[test]
     fn tar_roundtrip() {
@@ -86,8 +70,14 @@ mod tests {
 
         let dst_dir = tempfile::tempdir_in(".").unwrap();
         let archive_path = dst_dir.path().to_path_buf().join("archive.tar");
-
-        super::archive(&src_dir, &archive_path).unwrap();
+        let archive_file = OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&archive_path)
+            .unwrap();
+        let mut archive_stream =
+            ArchiveStream::new(&src_dir, archive_file).expect("couldn't create archive stream");
+        assert!(archive_stream.pack().is_ok());
 
         {
             let archive_file = OpenOptions::new().read(true).open(&archive_path).unwrap();
