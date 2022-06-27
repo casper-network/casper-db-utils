@@ -16,7 +16,6 @@ const BUFFER_CAPACITY: usize = 1_000;
 pub fn create_archive<P1: AsRef<Path>, P2: AsRef<Path>>(
     db_dir_path: P1,
     dest: P2,
-    require_checksums: bool,
 ) -> Result<(), Error> {
     let ring_buffer = BlockingRingBuffer::new(BUFFER_CAPACITY);
     let (producer, mut consumer) = ring_buffer.split();
@@ -39,7 +38,7 @@ pub fn create_archive<P1: AsRef<Path>, P2: AsRef<Path>>(
         .open(&dest)
         .map_err(Error::Destination)?;
 
-    let mut encoder = zstd_utils::zstd_encode_stream(output_file, require_checksums)?;
+    let mut encoder = zstd_utils::zstd_encode_stream(output_file)?;
     let _ = std_io::copy(&mut consumer, &mut encoder).map_err(Error::Streaming)?;
     encoder.finish().map_err(Error::Streaming)?;
 

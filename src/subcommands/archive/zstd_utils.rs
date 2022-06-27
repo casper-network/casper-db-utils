@@ -3,7 +3,7 @@ use std::{
     result::Result,
 };
 
-use log::{info, warn};
+use log::info;
 use thiserror::Error as ThisError;
 use zstd::{Decoder, Encoder};
 
@@ -32,19 +32,12 @@ pub fn zstd_decode_stream<'a, R: Read>(stream: R) -> Result<Decoder<'a, BufReade
     Ok(decoder)
 }
 
-pub fn zstd_encode_stream<'a, W: Write>(
-    stream: W,
-    require_checksum: bool,
-) -> Result<Encoder<'a, BufWriter<W>>, Error> {
+pub fn zstd_encode_stream<'a, W: Write>(stream: W) -> Result<Encoder<'a, BufWriter<W>>, Error> {
     let mut encoder =
         Encoder::new(BufWriter::new(stream), COMPRESSION_LEVEL).map_err(Error::Encode)?;
     encoder
         .window_log(WINDOW_LOG_MAX_SIZE)
         .map_err(Error::WindowLog)?;
-    match (encoder.include_checksum(true), require_checksum) {
-        (Err(err), true) => return Err(Error::Checksum(err)),
-        (Err(_), false) => warn!("Couldn't enable frame checksums on zstd encoder."),
-        _ => {}
-    }
+    encoder.include_checksum(true).map_err(Error::Checksum)?;
     Ok(encoder)
 }
