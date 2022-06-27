@@ -4,7 +4,8 @@ mod file_stream;
 mod tests;
 
 use std::{
-    io::Error as IoError,
+    fs,
+    io::{Error as IoError, ErrorKind},
     path::{Path, PathBuf},
 };
 
@@ -23,6 +24,8 @@ const URL: &str = "url";
 
 #[derive(Debug, ThisError)]
 pub enum Error {
+    #[error("Error validating destination directory: {0}")]
+    Destination(IoError),
     #[error("HTTP request error: {0}")]
     Request(#[from] ReqwestError),
     #[error("Error creating tokio runtime: {0}")]
@@ -46,7 +49,24 @@ enum Input {
     Url(String),
 }
 
+fn validate_destination_path<P: AsRef<Path>>(path: P) -> Result<(), Error> {
+    let path_ref = path.as_ref();
+    if path_ref.exists() {
+        if path_ref.is_dir() {
+            Err(Error::Destination(IoError::new(
+                ErrorKind::InvalidInput,
+                "not a directory",
+            )))
+        } else {
+            Ok(())
+        }
+    } else {
+        fs::create_dir_all(path_ref).map_err(Error::Destination)
+    }
+}
+
 fn unpack<P: AsRef<Path>>(input: Input, dest: P) -> Result<(), Error> {
+    validate_destination_path(&dest)?;
     match input {
         Input::Url(url) => download_stream::download_and_unpack_archive(&url, dest),
         Input::File(path) => file_stream::file_stream_and_unpack_archive(path, dest),
