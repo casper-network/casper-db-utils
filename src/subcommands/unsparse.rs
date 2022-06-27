@@ -19,7 +19,7 @@ pub fn command(display_order: usize) -> Command<'static> {
                 .display_order(0)
                 .value_name("DB_PATH")
                 .required(true)
-                .help("Path to the storage.lmdb file."),
+                .help("Path to the storage.lmdb or data.lmdb file."),
         )
 }
 
