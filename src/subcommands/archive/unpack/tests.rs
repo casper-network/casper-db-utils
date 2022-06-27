@@ -1,5 +1,5 @@
 use std::{
-    fs::{self, OpenOptions},
+    fs::{self, File},
     io::{Read, Write},
     net::TcpListener,
     sync::{Arc, Barrier},
@@ -77,14 +77,7 @@ fn zstd_decode_roundtrip() {
 
     // Write the encoded contents to a file as well.
     let encoded_path = tmp_dir.path().join("encoded");
-    {
-        let mut encoded_file = OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&encoded_path)
-            .unwrap();
-        encoded_file.write_all(&encoded).unwrap();
-    }
+    fs::write(&encoded_path, &encoded).unwrap();
 
     // Decode the response with the zstd streaming function.
     let mut decoder = zstd_utils::zstd_decode_stream(encoded.as_slice()).unwrap();
@@ -107,15 +100,8 @@ fn archive_unpack_decode_network() {
     fs::write(&file_payload_path, &payload).unwrap();
     let archive_path = src_dir.path().join(TEST_ARCHIVE);
     {
-        let archive_file = OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&archive_path)
-            .unwrap();
-        let mut payload_file = OpenOptions::new()
-            .read(true)
-            .open(&file_payload_path)
-            .unwrap();
+        let archive_file = File::create(&archive_path).unwrap();
+        let mut payload_file = File::open(&file_payload_path).unwrap();
         let mut archive = Builder::new(archive_file);
         archive.append_file(TEST_FILE, &mut payload_file).unwrap();
         archive.finish().unwrap();
@@ -151,14 +137,8 @@ fn archive_unpack_decode_network() {
         .expect("Error downloading and decoding payload");
 
     // Check that the downloaded contents are the same as our payload.
-    let mut dest_file = OpenOptions::new()
-        .read(true)
-        .open(temp_dir.path().join(TEST_FILE))
-        .expect("Couldn't open destination file");
-    let mut output_bytes = vec![];
-    dest_file
-        .read_to_end(&mut output_bytes)
-        .expect("Couldn't read from destination file");
+    let output_bytes = fs::read(temp_dir.path().join(TEST_FILE))
+        .expect("Couldn't read output from destination file");
     assert_eq!(payload.to_vec(), output_bytes);
 
     // Let the server thread finish execution.
@@ -178,15 +158,8 @@ fn archive_unpack_decode_file() {
     fs::write(&file_payload_path, &payload).unwrap();
     let archive_path = src_dir.path().join(TEST_ARCHIVE);
     {
-        let archive_file = OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&archive_path)
-            .unwrap();
-        let mut payload_file = OpenOptions::new()
-            .read(true)
-            .open(&file_payload_path)
-            .unwrap();
+        let archive_file = File::create(&archive_path).unwrap();
+        let mut payload_file = File::open(&file_payload_path).unwrap();
         let mut archive = Builder::new(archive_file);
         archive.append_file(TEST_FILE, &mut payload_file).unwrap();
         archive.finish().unwrap();
@@ -195,12 +168,7 @@ fn archive_unpack_decode_file() {
     let archive_payload = fs::read(&archive_path).unwrap();
     // Encode the payload with zstd.
     let compressed_archive_path = src_dir.path().join(TEST_COMPRESSED_ARCHIVE);
-
-    let compressed_archive = OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(&compressed_archive_path)
-        .unwrap();
+    let compressed_archive = File::create(&compressed_archive_path).unwrap();
     let mut encoder = Encoder::new(compressed_archive, 0).unwrap();
     encoder.write_all(&archive_payload).unwrap();
     let _ = encoder.finish().unwrap();
@@ -213,14 +181,8 @@ fn archive_unpack_decode_file() {
         .expect("Error downloading and decoding payload");
 
     // Check that the streamed contents are the same as our payload.
-    let mut dest_file = OpenOptions::new()
-        .read(true)
-        .open(temp_dir.path().join(TEST_FILE))
-        .expect("Couldn't open destination file");
-    let mut output_bytes = vec![];
-    dest_file
-        .read_to_end(&mut output_bytes)
-        .expect("Couldn't read from destination file");
+    let output_bytes = fs::read(temp_dir.path().join(TEST_FILE))
+        .expect("Couldn't read output from destination file");
     assert_eq!(payload.to_vec(), output_bytes);
 }
 
@@ -244,11 +206,7 @@ fn archive_unpack_existing_destination() {
     let dest_path = temp_dir.path().join(TEST_FILE);
 
     // Create the destination file before downloading.
-    let _ = OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(&dest_path)
-        .unwrap();
+    let _ = File::create(&dest_path).unwrap();
     // Download should fail because the file is already present. Address doesn't
     // matter because the file check is performed first.
     assert!(download_stream::download_and_unpack_archive("bogus_address", dest_path).is_err());
@@ -273,18 +231,11 @@ fn archive_unpack_file_existing_destination() {
     let dest_path = temp_dir.path().join("dst_file");
 
     // Create the source file before streaming.
-    let _ = OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(&src_path)
-        .unwrap();
+    let _ = File::create(&src_path).unwrap();
 
     // Create the destination file before streaming.
-    let _ = OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(&dest_path)
-        .unwrap();
+    let _ = File::create(&dest_path).unwrap();
+
     // File streaming should fail because the destination file is already present.
     // The source doesn't matter because the existing destination check is
     // performed first.

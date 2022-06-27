@@ -1,6 +1,5 @@
 use std::{
-    fs::{self, OpenOptions},
-    io::Write,
+    fs::{self, File},
     path::Path,
 };
 
@@ -27,19 +26,14 @@ fn create_mock_src_dir() -> (TempDir, TestPayloads) {
     let mut rng = rand::thread_rng();
     let mut payloads = [[0u8; TEST_FILE_SIZE]; NUM_TEST_FILES];
     for (idx, payload) in payloads.iter_mut().enumerate().take(NUM_TEST_FILES) {
-        let mut file = OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(src_dir.path().join(&format!("file_{}", idx)))
-            .unwrap();
         rng.fill_bytes(payload);
-        file.write_all(payload).unwrap();
+        fs::write(src_dir.path().join(&format!("file_{}", idx)), &payload).unwrap();
     }
     (src_dir, TestPayloads { payloads })
 }
 
 fn unpack_mock_archive<P1: AsRef<Path>, P2: AsRef<Path>>(archive_path: P1, dst_dir: P2) {
-    let archive_file = OpenOptions::new().read(true).open(&archive_path).unwrap();
+    let archive_file = File::open(&archive_path).unwrap();
     let mut decoder = Decoder::new(archive_file).unwrap();
     decoder.window_log_max(31).unwrap();
     let mut unpacker = Archive::new(decoder);

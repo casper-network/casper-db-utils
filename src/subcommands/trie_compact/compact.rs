@@ -1,7 +1,7 @@
 use std::{
     collections::HashSet,
     fmt::{Display, Formatter, Result as FmtResult},
-    fs::{self, OpenOptions},
+    fs::{self, File, OpenOptions},
     io::Error as IoError,
     path::{Path, PathBuf},
 };
@@ -144,7 +144,7 @@ fn validate_trie_paths<P1: AsRef<Path>, P2: AsRef<Path>>(
             }
             DestinationOptions::Overwrite => {
                 if dest_data_exists {
-                    let _f: std::fs::File = OpenOptions::new()
+                    let _f: File = OpenOptions::new()
                         .truncate(true)
                         .write(true)
                         .open(destination_trie_path.as_ref().join(TRIE_STORE_FILE_NAME))

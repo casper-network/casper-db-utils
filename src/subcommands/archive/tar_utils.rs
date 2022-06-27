@@ -47,8 +47,8 @@ pub fn unarchive_stream<R: Read + Sized>(stream: R) -> Archive<R> {
 #[cfg(test)]
 mod tests {
     use std::{
-        fs::{self, OpenOptions},
-        io::{Read, Write},
+        fs::{self, File},
+        io::Write,
     };
 
     use tempfile::{self, NamedTempFile};
@@ -70,17 +70,13 @@ mod tests {
 
         let dst_dir = tempfile::tempdir_in(".").unwrap();
         let archive_path = dst_dir.path().to_path_buf().join("archive.tar");
-        let archive_file = OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&archive_path)
-            .unwrap();
+        let archive_file = File::create(&archive_path).unwrap();
         let mut archive_stream =
             ArchiveStream::new(&src_dir, archive_file).expect("couldn't create archive stream");
         assert!(archive_stream.pack().is_ok());
 
         {
-            let archive_file = OpenOptions::new().read(true).open(&archive_path).unwrap();
+            let archive_file = File::open(&archive_path).unwrap();
             let mut archive = super::unarchive_stream(archive_file);
             archive.unpack(&dst_dir).unwrap();
         }
@@ -88,14 +84,8 @@ mod tests {
         fs::remove_file(&archive_path).unwrap();
 
         for (idx, file) in test_files.iter().enumerate().take(num_files) {
-            let mut contents = String::new();
             let path = dst_dir.path().join(file.path().file_name().unwrap());
-            OpenOptions::new()
-                .read(true)
-                .open(path)
-                .unwrap()
-                .read_to_string(&mut contents)
-                .unwrap();
+            let contents = fs::read_to_string(&path).unwrap();
             assert_eq!(contents, format!("test file {}", idx));
         }
     }
