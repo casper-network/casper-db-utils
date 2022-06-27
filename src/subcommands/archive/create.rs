@@ -13,7 +13,7 @@ use super::zstd_utils::Error as ZstdError;
 pub const COMMAND_NAME: &str = "create";
 const NO_CHECKSUMS: &str = "no-checksums";
 const OUTPUT: &str = "output";
-const DB: &str = "db";
+const DB: &str = "db-dir";
 
 #[derive(Debug, ThisError)]
 pub enum Error {
@@ -39,7 +39,7 @@ pub fn command(display_order: usize) -> Command<'static> {
     Command::new(COMMAND_NAME)
         .display_order(display_order)
         .about(
-            "Packs a casper-node storage instance to a tarball and then compresses it with ZSTD.",
+            "Packs a casper-node storage instance to a tarball and then compresses it with zstd.",
         )
         .arg(
             Arg::new(DB)
@@ -59,7 +59,7 @@ pub fn command(display_order: usize) -> Command<'static> {
                 .long(OUTPUT)
                 .takes_value(true)
                 .value_name("FILE_PATH")
-                .help("Output file path for the compressed TAR archive."),
+                .help("Output file path for the compressed tar archive."),
         )
         .arg(
             Arg::new(NO_CHECKSUMS)

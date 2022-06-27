@@ -8,7 +8,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use clap::{Arg, ArgMatches, Command};
+use clap::{Arg, ArgGroup, ArgMatches, Command};
 use log::error;
 use reqwest::Error as ReqwestError;
 use thiserror::Error as ThisError;
@@ -17,6 +17,7 @@ use super::zstd_utils::Error as ZstdError;
 
 pub const COMMAND_NAME: &str = "unpack";
 const FILE: &str = "file";
+const INPUT_SOURCE: &str = "input-source";
 const OUTPUT: &str = "output";
 const URL: &str = "url";
 
@@ -55,11 +56,11 @@ fn unpack<P: AsRef<Path>>(input: Input, dest: P) -> Result<(), Error> {
 pub fn command(display_order: usize) -> Command<'static> {
     Command::new(COMMAND_NAME)
         .display_order(display_order)
-        .about("Downloads and decompresses a ZSTD TAR archive of a casper-node storage instance.")
+        .about("Downloads and decompresses a zstd tar archive of a casper-node storage instance.")
         .arg(
             Arg::new(URL)
                 .display_order(DisplayOrder::Url as usize)
-                .required_unless_present(FILE)
+                .group(INPUT_SOURCE)
                 .short('u')
                 .long(URL)
                 .takes_value(true)
@@ -69,13 +70,12 @@ pub fn command(display_order: usize) -> Command<'static> {
         .arg(
             Arg::new(FILE)
                 .display_order(DisplayOrder::File as usize)
+                .group(INPUT_SOURCE)
                 .required(true)
                 .short('f')
                 .long(FILE)
                 .takes_value(true)
                 .value_name("FILE_PATH")
-                .required_unless_present(URL)
-                .conflicts_with(URL)
                 .help("Path to the compressed archive."),
         )
         .arg(
@@ -85,8 +85,18 @@ pub fn command(display_order: usize) -> Command<'static> {
                 .short('o')
                 .long(OUTPUT)
                 .takes_value(true)
-                .value_name("FILE_PATH")
-                .help("Output file path for the decompressed TAR archive."),
+                .value_name("DIR_PATH")
+                .help(
+                    "Path of the output directory for the decompressed \
+                    tar archive contents. If the directory doesn't exist, \
+                    it will be created along with any missing parent \
+                    directories.",
+                ),
+        )
+        .group(
+            ArgGroup::new(INPUT_SOURCE)
+                .required(true)
+                .args(&[URL, FILE]),
         )
 }
 

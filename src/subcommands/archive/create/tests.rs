@@ -110,7 +110,6 @@ fn archive_create_bad_input() {
 
 #[test]
 fn archive_create_streamed_bad_input() {
-    // TODO: fix this test with error handling in streaming thread.
     let src_dir = &(*MOCK_DIR).0;
     let root_dst = tempfile::tempdir().unwrap();
     let inexistent_file_path = root_dst.path().join("bogus_path");
