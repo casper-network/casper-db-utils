@@ -80,7 +80,6 @@ pub fn command(display_order: usize) -> Command<'static> {
         .arg(
             Arg::new(URL)
                 .display_order(DisplayOrder::Url as usize)
-                .group(INPUT_SOURCE)
                 .short('u')
                 .long(URL)
                 .takes_value(true)
@@ -90,8 +89,6 @@ pub fn command(display_order: usize) -> Command<'static> {
         .arg(
             Arg::new(FILE)
                 .display_order(DisplayOrder::File as usize)
-                .group(INPUT_SOURCE)
-                .required(true)
                 .short('f')
                 .long(FILE)
                 .takes_value(true)
