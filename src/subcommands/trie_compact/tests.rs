@@ -249,9 +249,9 @@ fn check_no_extra_tries() {
 #[test]
 fn missing_source_trie() {
     match compact::trie_compact(
-        "".into(),
-        "bogus_path".into(),
-        "".into(),
+        "",
+        "bogus_path",
+        "",
         DestinationOptions::New,
         *DEFAULT_MAX_DB_SIZE,
     ) {
@@ -266,9 +266,9 @@ fn missing_storage() {
     let (src_dir, _) = create_test_trie_store();
     let dst_dir = tempdir().unwrap();
     match compact::trie_compact(
-        "bogus_path".into(),
-        src_dir.path().into(),
-        dst_dir.path().into(),
+        "bogus_path",
+        src_dir,
+        dst_dir,
         DestinationOptions::New,
         *DEFAULT_MAX_DB_SIZE,
     ) {
@@ -284,9 +284,9 @@ fn valid_empty_dst_with_destination_options() {
     let dst_dir = tempdir().unwrap();
     let (storage_dir, _store) = create_empty_test_storage();
     match compact::trie_compact(
-        storage_dir.path().into(),
-        src_dir.path().into(),
-        dst_dir.path().into(),
+        &storage_dir,
+        &src_dir,
+        &dst_dir,
         DestinationOptions::New,
         *DEFAULT_MAX_DB_SIZE,
     ) {
@@ -296,9 +296,9 @@ fn valid_empty_dst_with_destination_options() {
     fs::remove_file(dst_dir.path().join(TRIE_STORE_FILE_NAME)).unwrap();
 
     match compact::trie_compact(
-        storage_dir.path().into(),
-        src_dir.path().into(),
-        dst_dir.path().into(),
+        &storage_dir,
+        &src_dir,
+        &dst_dir,
         DestinationOptions::Append,
         *DEFAULT_MAX_DB_SIZE,
     ) {
@@ -308,9 +308,9 @@ fn valid_empty_dst_with_destination_options() {
     }
 
     match compact::trie_compact(
-        storage_dir.path().into(),
-        src_dir.path().into(),
-        dst_dir.path().into(),
+        &storage_dir,
+        &src_dir,
+        &dst_dir,
         DestinationOptions::Overwrite,
         *DEFAULT_MAX_DB_SIZE,
     ) {
@@ -331,9 +331,9 @@ fn valid_existing_dst_with_destination_options() {
 
     let (storage_dir, _store) = create_empty_test_storage();
     match compact::trie_compact(
-        storage_dir.path().into(),
-        src_dir.path().into(),
-        dst_dir.path().into(),
+        &storage_dir,
+        &src_dir,
+        &dst_dir,
         DestinationOptions::New,
         *DEFAULT_MAX_DB_SIZE,
     ) {
@@ -343,9 +343,9 @@ fn valid_existing_dst_with_destination_options() {
     }
 
     match compact::trie_compact(
-        storage_dir.path().into(),
-        src_dir.path().into(),
-        dst_dir.path().into(),
+        &storage_dir,
+        &src_dir,
+        &dst_dir,
         DestinationOptions::Append,
         *DEFAULT_MAX_DB_SIZE,
     ) {
@@ -355,9 +355,9 @@ fn valid_existing_dst_with_destination_options() {
 
     assert!(dst_dir.path().join(TRIE_STORE_FILE_NAME).exists());
     match compact::trie_compact(
-        storage_dir.path().into(),
-        src_dir.path().into(),
-        dst_dir.path().into(),
+        &storage_dir,
+        &src_dir,
+        &dst_dir,
         DestinationOptions::Overwrite,
         *DEFAULT_MAX_DB_SIZE,
     ) {
@@ -376,9 +376,9 @@ fn missing_dst_with_destination_options() {
     let dst_dir = root_dst_dir.path().join("extra_dir");
     let (storage_dir, _store) = create_empty_test_storage();
     match compact::trie_compact(
-        storage_dir.path().into(),
-        src_dir.path().into(),
-        dst_dir.clone(),
+        &storage_dir,
+        &src_dir,
+        &dst_dir,
         DestinationOptions::New,
         *DEFAULT_MAX_DB_SIZE,
     ) {
@@ -388,9 +388,9 @@ fn missing_dst_with_destination_options() {
     fs::remove_dir_all(dst_dir.as_path()).unwrap();
 
     match compact::trie_compact(
-        storage_dir.path().into(),
-        src_dir.path().into(),
-        dst_dir.clone(),
+        &storage_dir,
+        &src_dir,
+        &dst_dir,
         DestinationOptions::Append,
         *DEFAULT_MAX_DB_SIZE,
     ) {
@@ -400,9 +400,9 @@ fn missing_dst_with_destination_options() {
     }
 
     match compact::trie_compact(
-        storage_dir.path().into(),
-        src_dir.path().into(),
-        dst_dir,
+        &storage_dir,
+        &src_dir,
+        &dst_dir,
         DestinationOptions::Overwrite,
         *DEFAULT_MAX_DB_SIZE,
     ) {

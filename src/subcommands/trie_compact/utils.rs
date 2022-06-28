@@ -117,7 +117,7 @@ pub fn create_storage(chain_download_path: impl AsRef<Path>) -> Result<Storage, 
     )?)
 }
 
-pub fn normalize_path(path: impl AsRef<Path>) -> Result<PathBuf, anyhow::Error> {
+pub fn normalize_path<P: AsRef<Path>>(path: P) -> Result<PathBuf, anyhow::Error> {
     let path = path.as_ref();
     let path = if path.is_absolute() {
         path.into()

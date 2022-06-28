@@ -1,7 +1,7 @@
 use std::{
     collections::HashSet,
     fmt::{Display, Formatter, Result as FmtResult},
-    fs::{self, OpenOptions},
+    fs::{self, File, OpenOptions},
     io::Error as IoError,
     path::{Path, PathBuf},
 };
@@ -85,9 +85,9 @@ impl Display for Error {
     }
 }
 
-fn validate_trie_paths<P: AsRef<Path>>(
-    source_trie_path: P,
-    destination_trie_path: P,
+fn validate_trie_paths<P1: AsRef<Path>, P2: AsRef<Path>>(
+    source_trie_path: P1,
+    destination_trie_path: P2,
     dest_opt: DestinationOptions,
 ) -> Result<(), Error> {
     let dest_path_exists = destination_trie_path.as_ref().exists();
@@ -144,7 +144,7 @@ fn validate_trie_paths<P: AsRef<Path>>(
             }
             DestinationOptions::Overwrite => {
                 if dest_data_exists {
-                    let _f: std::fs::File = OpenOptions::new()
+                    let _f: File = OpenOptions::new()
                         .truncate(true)
                         .write(true)
                         .open(destination_trie_path.as_ref().join(TRIE_STORE_FILE_NAME))
@@ -192,10 +192,10 @@ fn validate_trie_paths<P: AsRef<Path>>(
 /// compacting starts from that state root hash. Each descendant of that
 /// block's hash is copied to the destination trie. This process is repeated
 /// for all the remaining blocks, from highest to lowest.
-pub fn trie_compact(
-    storage_path: PathBuf,
-    source_trie_path: PathBuf,
-    destination_trie_path: PathBuf,
+pub fn trie_compact<P1: AsRef<Path>, P2: AsRef<Path>, P3: AsRef<Path>>(
+    storage_path: P1,
+    source_trie_path: P2,
+    destination_trie_path: P3,
     dest_opt: DestinationOptions,
     max_db_size: usize,
 ) -> Result<(), Error> {
