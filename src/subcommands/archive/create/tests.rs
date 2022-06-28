@@ -9,7 +9,7 @@ use tar::Archive;
 use tempfile::{NamedTempFile, TempDir};
 use zstd::Decoder;
 
-use crate::subcommands::archive::create::pack;
+use crate::subcommands::archive::{create::pack, zstd_utils::WINDOW_LOG_MAX_SIZE};
 
 const NUM_TEST_FILES: usize = 10usize;
 const TEST_FILE_SIZE: usize = 10000usize;
@@ -35,7 +35,7 @@ fn create_mock_src_dir() -> (TempDir, TestPayloads) {
 fn unpack_mock_archive<P1: AsRef<Path>, P2: AsRef<Path>>(archive_path: P1, dst_dir: P2) {
     let archive_file = File::open(&archive_path).unwrap();
     let mut decoder = Decoder::new(archive_file).unwrap();
-    decoder.window_log_max(31).unwrap();
+    decoder.window_log_max(WINDOW_LOG_MAX_SIZE).unwrap();
     let mut unpacker = Archive::new(decoder);
     unpacker.unpack(&dst_dir).unwrap();
     fs::remove_file(&archive_path).unwrap();

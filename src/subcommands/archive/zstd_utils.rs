@@ -8,7 +8,7 @@ use thiserror::Error as ThisError;
 use zstd::{Decoder, Encoder};
 
 const COMPRESSION_LEVEL: i32 = 15;
-const WINDOW_LOG_MAX_SIZE: u32 = 31;
+pub(crate) const WINDOW_LOG_MAX_SIZE: u32 = 31;
 
 #[derive(Debug, ThisError)]
 pub enum Error {
