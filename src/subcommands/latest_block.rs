@@ -1,5 +1,7 @@
 mod block_info;
 mod read_db;
+#[cfg(test)]
+mod tests;
 
 use std::path::Path;
 
