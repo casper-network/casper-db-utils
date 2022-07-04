@@ -1,9 +1,7 @@
-mod db;
-
 use clap::{Arg, ArgMatches, Command};
 use log::error;
 
-use db::{
+use crate::common::db::{
     db_env, BlockBodyDatabase, BlockBodyMerkleDatabase, BlockHeaderDatabase, BlockMetadataDatabase,
     Database, DeployDatabase, DeployHashesDatabase, DeployMetadataDatabase, Error,
     FinalizedApprovalsDatabase, ProposerDatabase, StateStoreDatabase, TransferDatabase,

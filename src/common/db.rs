@@ -33,7 +33,7 @@ use std::{
 };
 
 use bincode::Error as BincodeError;
-use lmdb::{Cursor, Environment, EnvironmentFlags, RoCursor, Transaction};
+use lmdb::{Cursor, Environment, EnvironmentFlags, Error as LmdbError, RoCursor, Transaction};
 use log::info;
 use thiserror::Error;
 
@@ -64,7 +64,7 @@ pub enum Error {
     /// Parsing error on entry at index in the database.
     Parsing(usize, DeserializationError),
     /// Database operation error.
-    Database(#[from] lmdb::Error),
+    Database(#[from] LmdbError),
 }
 
 impl Display for Error {
@@ -83,7 +83,7 @@ impl Display for Error {
     }
 }
 
-pub fn db_env<P: AsRef<Path>>(path: P) -> Result<Environment, Error> {
+pub fn db_env<P: AsRef<Path>>(path: P) -> Result<Environment, LmdbError> {
     let env = Environment::new()
         .set_flags(
             EnvironmentFlags::NO_SUB_DIR
