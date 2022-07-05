@@ -1,20 +1,17 @@
 use std::{
     collections::HashSet,
-    fmt::{Display, Formatter, Result as FmtResult},
     fs::{self, File, OpenOptions},
-    io::Error as IoError,
-    path::{Path, PathBuf},
+    path::Path,
 };
 
-use anyhow::Error as AnyError;
-use lmdb::Error as LmdbError;
 use log::info;
-use thiserror::Error as ThisError;
 
 use casper_hashing::Digest;
-use casper_node::storage::Error as StorageError;
 
-use super::utils::{create_execution_engine, create_storage, load_execution_engine};
+use super::{
+    utils::{create_execution_engine, create_storage, load_execution_engine},
+    Error,
+};
 
 pub(crate) const TRIE_STORE_FILE_NAME: &str = "data.lmdb";
 
@@ -27,62 +24,6 @@ pub enum DestinationOptions {
     Overwrite,
     /// `data.lmdb` must not exist in destination directory.
     New,
-}
-
-/// Possible errors caught while compacting the trie store.
-#[derive(Debug, ThisError)]
-pub enum Error {
-    /// Error copying the state root with a specific digest.
-    CopyStateRoot(Digest, AnyError),
-    /// Error creating the execution engine for the source trie.
-    OpenSourceTrie(AnyError),
-    /// Error opening the block/deploys LMDB store.
-    OpenStorage(AnyError),
-    /// Error working with the destination trie path.
-    InvalidDest(String),
-    /// Path cannot be created/resolved.
-    InvalidPath(PathBuf, IoError),
-    /// Error while operating on LMDB.
-    LmdbOperation(LmdbError),
-    /// Error creating the execution engine for the destination trie.
-    CreateDestTrie(AnyError),
-    /// A block of specific height is missing from the storage.
-    MissingBlock(u64),
-    /// Error while getting a block of specific height from storage.
-    Storage(u64, StorageError),
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        match self {
-            Self::CopyStateRoot(digest, err) => {
-                write!(f, "Error copying state root {}: {}", digest, err)
-            }
-            Self::CreateDestTrie(err) => {
-                write!(f, "Error loading the execution engine: {}", err)
-            }
-            Self::InvalidDest(msg) => write!(f, "Invalid destination: {}", msg),
-            Self::InvalidPath(path, err) => write!(
-                f,
-                "Path {} cannot be created/resolved: {}",
-                path.to_string_lossy(),
-                err
-            ),
-            Self::LmdbOperation(err) => write!(f, "Error operation on LMDB: {}.", err),
-            Self::MissingBlock(idx) => write!(f, "Storage database is missing block {}.", idx),
-            Self::OpenSourceTrie(err) => {
-                write!(f, "Error creating the execution engine: {}", err)
-            }
-            Self::OpenStorage(err) => {
-                write!(f, "Error opening the block/deploy storage: {}", err)
-            }
-            Self::Storage(idx, err) => write!(
-                f,
-                "Storage error while trying to retrieve block {}: {}",
-                idx, err
-            ),
-        }
-    }
 }
 
 fn validate_trie_paths<P1: AsRef<Path>, P2: AsRef<Path>>(

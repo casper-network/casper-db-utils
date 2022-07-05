@@ -1,9 +1,12 @@
+use std::path::PathBuf;
+
 use clap::{Arg, ArgMatches, Command};
-use log::error;
+use lmdb::Error as LmdbError;
+use thiserror::Error as ThisError;
 
 use crate::common::db::{
     db_env, BlockBodyDatabase, BlockBodyMerkleDatabase, BlockHeaderDatabase, BlockMetadataDatabase,
-    Database, DeployDatabase, DeployHashesDatabase, DeployMetadataDatabase, Error,
+    Database, DeployDatabase, DeployHashesDatabase, DeployMetadataDatabase, Error as DbError,
     FinalizedApprovalsDatabase, ProposerDatabase, StateStoreDatabase, TransferDatabase,
     TransferHashesDatabase,
 };
@@ -19,6 +22,16 @@ enum DisplayOrder {
     DbPath,
     Specific,
     StartAt,
+}
+
+#[derive(ThisError, Debug)]
+pub enum Error {
+    #[error("Error checking the database: {0}")]
+    Database(#[from] DbError),
+    #[error("Error initializing lmdb environment at {0}: {1}")]
+    Path(PathBuf, LmdbError),
+    #[error("Unknown database {0}")]
+    UnknownDb(String),
 }
 
 pub fn command(display_order: usize) -> Command<'static> {
@@ -73,23 +86,17 @@ pub fn command(display_order: usize) -> Command<'static> {
         )
 }
 
-pub fn run(matches: &ArgMatches) -> bool {
+pub fn run(matches: &ArgMatches) -> Result<(), Error> {
     let path = matches.value_of(DB_PATH).unwrap();
     let failfast = !matches.is_present(NO_FAILFAST);
     let specific = matches.value_of(SPECIFIC);
     let start_at: usize = matches
         .value_of(START_AT)
-        .unwrap()
+        .expect("should have a default")
         .parse()
         .expect("Value of \"--start-at\" must be an integer.");
 
-    let result = check_db(path, failfast, specific, start_at);
-
-    if let Err(error) = &result {
-        error!("Database check failed. {}", error);
-    }
-
-    result.is_ok()
+    check_db(path, failfast, specific, start_at)
 }
 
 fn check_db(
@@ -98,22 +105,24 @@ fn check_db(
     specific: Option<&str>,
     start_at: usize,
 ) -> Result<(), Error> {
-    let env = db_env(path).expect("Failed to initialize DB environment");
+    let env = db_env(path).map_err(|lmdb_err| Error::Path(path.into(), lmdb_err))?;
     if let Some(db_name) = specific {
         match db_name.trim() {
-            "block_body" => BlockBodyDatabase::check_db(&env, failfast, start_at),
-            "block_body_merkle" => BlockBodyMerkleDatabase::check_db(&env, failfast, start_at),
-            "block_header" => BlockHeaderDatabase::check_db(&env, failfast, start_at),
-            "block_metadata" => BlockMetadataDatabase::check_db(&env, failfast, start_at),
-            "deploy_hashes" => DeployHashesDatabase::check_db(&env, failfast, start_at),
-            "deploy_metadata" => DeployMetadataDatabase::check_db(&env, failfast, start_at),
-            "deploys" => DeployDatabase::check_db(&env, failfast, start_at),
-            "finalized_approvals" => FinalizedApprovalsDatabase::check_db(&env, failfast, start_at),
-            "proposers" => ProposerDatabase::check_db(&env, failfast, start_at),
-            "state_store" => StateStoreDatabase::check_db(&env, failfast, start_at),
-            "transfer" => TransferDatabase::check_db(&env, failfast, start_at),
-            "transfer_hashes" => TransferHashesDatabase::check_db(&env, failfast, start_at),
-            _ => panic!("Database {} not found.", db_name),
+            "block_body" => BlockBodyDatabase::check_db(&env, failfast, start_at)?,
+            "block_body_merkle" => BlockBodyMerkleDatabase::check_db(&env, failfast, start_at)?,
+            "block_header" => BlockHeaderDatabase::check_db(&env, failfast, start_at)?,
+            "block_metadata" => BlockMetadataDatabase::check_db(&env, failfast, start_at)?,
+            "deploy_hashes" => DeployHashesDatabase::check_db(&env, failfast, start_at)?,
+            "deploy_metadata" => DeployMetadataDatabase::check_db(&env, failfast, start_at)?,
+            "deploys" => DeployDatabase::check_db(&env, failfast, start_at)?,
+            "finalized_approvals" => {
+                FinalizedApprovalsDatabase::check_db(&env, failfast, start_at)?
+            }
+            "proposers" => ProposerDatabase::check_db(&env, failfast, start_at)?,
+            "state_store" => StateStoreDatabase::check_db(&env, failfast, start_at)?,
+            "transfer" => TransferDatabase::check_db(&env, failfast, start_at)?,
+            "transfer_hashes" => TransferHashesDatabase::check_db(&env, failfast, start_at)?,
+            _ => return Err(Error::UnknownDb(db_name.to_string())),
         }
     } else {
         // Sanity check for `start_at`, already validated in arg parser.
@@ -129,6 +138,7 @@ fn check_db(
         ProposerDatabase::check_db(&env, failfast, start_at)?;
         StateStoreDatabase::check_db(&env, failfast, start_at)?;
         TransferDatabase::check_db(&env, failfast, start_at)?;
-        TransferHashesDatabase::check_db(&env, failfast, start_at)
-    }
+        TransferHashesDatabase::check_db(&env, failfast, start_at)?;
+    };
+    Ok(())
 }

@@ -59,14 +59,8 @@ pub fn command(display_order: usize) -> Command<'static> {
         )
 }
 
-pub fn run(matches: &ArgMatches) -> bool {
+pub fn run(matches: &ArgMatches) -> Result<(), Error> {
     let db_path = matches.value_of(DB).unwrap();
     let dest = matches.value_of(OUTPUT).unwrap();
-    let result = pack::create_archive(db_path, dest);
-
-    if let Err(error) = &result {
-        error!("Archive packing failed. {}", error);
-    }
-
-    result.is_ok()
+    pack::create_archive(db_path, dest)
 }

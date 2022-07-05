@@ -1,38 +1,19 @@
 use std::{
     fs::OpenOptions,
-    io::{self, Error as IoError, Write},
+    io::{self, Write},
     path::Path,
     result::Result,
 };
 
-use bincode::Error as BincodeError;
-use lmdb::{Cursor, Environment, Error as LmdbError, Transaction};
-use log::{error, warn};
+use lmdb::{Cursor, Environment, Transaction};
+use log::warn;
 use serde_json::{self, Error as SerializationError};
-use thiserror::Error;
 
 use casper_node::types::BlockHeader;
 
 use crate::common::db::{self, BlockHeaderDatabase, Database};
 
-use super::block_info::{parse_network_name, BlockInfo};
-
-/// Errors encountered when operating on the storage database.
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error("No blocks found in the block header database")]
-    EmptyDatabase,
-    /// Parsing error on entry at index in the database.
-    #[error("Error parsing element {0}: {1}")]
-    Parsing(usize, BincodeError),
-    /// Database operation error.
-    #[error("Error operating the database: {0}")]
-    Database(#[from] LmdbError),
-    #[error("Error serializing output: {0}")]
-    Serialize(#[from] SerializationError),
-    #[error("Error writing output: {0}")]
-    Output(#[from] IoError),
-}
+use super::{block_info::{parse_network_name, BlockInfo}, Error};
 
 fn get_highest_block(env: &Environment) -> Result<BlockHeader, Error> {
     let txn = env.begin_ro_txn()?;

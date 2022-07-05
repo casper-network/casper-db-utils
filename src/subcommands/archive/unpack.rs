@@ -117,7 +117,7 @@ pub fn command(display_order: usize) -> Command<'static> {
         )
 }
 
-pub fn run(matches: &ArgMatches) -> bool {
+pub fn run(matches: &ArgMatches) -> Result<(), Error> {
     let input = matches
         .value_of(URL)
         .map(|url| Input::Url(url.to_string()))
@@ -128,11 +128,5 @@ pub fn run(matches: &ArgMatches) -> bool {
                 .unwrap_or_else(|| panic!("Should have one of {} or {}", FILE, URL))
         });
     let dest = matches.value_of(OUTPUT).unwrap();
-    let result = unpack(input, dest);
-
-    if let Err(error) = &result {
-        error!("Archive unpack failed. {}", error);
-    }
-
-    result.is_ok()
+    unpack(input, dest)
 }
