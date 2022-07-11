@@ -50,7 +50,7 @@ pub fn command(display_order: usize) -> Command<'static> {
 
 pub fn run(matches: &ArgMatches) -> bool {
     let path = Path::new(matches.value_of(DB_PATH).expect("should have db-path arg"));
-    let output = matches.value_of(DB_PATH).map(Path::new);
+    let output = matches.value_of(OUTPUT).map(Path::new);
     let result = read_db::latest_block(path, output);
 
     if let Err(error) = &result {
