@@ -73,7 +73,7 @@ pub(crate) fn dump_block_info<W: Write + ?Sized>(
     serde_json::to_writer_pretty(out_writer, block_header)
 }
 
-pub fn latest_block<P1: AsRef<Path>, P2: AsRef<Path>>(
+pub fn latest_block_summary<P1: AsRef<Path>, P2: AsRef<Path>>(
     db_path: P1,
     output: Option<P2>,
 ) -> Result<(), Error> {

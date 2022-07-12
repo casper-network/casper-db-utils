@@ -11,7 +11,7 @@ use casper_node::{
 
 use super::block_info::BlockInfo;
 use crate::{
-    subcommands::latest_block::{block_info, read_db},
+    subcommands::latest_block_summary::{block_info, read_db},
     test_utils::{LmdbTestFixture, MockBlockHeader},
 };
 
@@ -109,7 +109,7 @@ fn latest_block_should_succeed() {
         txn.commit().unwrap();
     };
 
-    read_db::latest_block(fixture.tmp_file.path(), Some(out_file_path.as_path())).unwrap();
+    read_db::latest_block_summary(fixture.tmp_file.path(), Some(out_file_path.as_path())).unwrap();
     let json_str = fs::read_to_string(&out_file_path).unwrap();
     let block_info: BlockInfo = serde_json::from_str(&json_str).unwrap();
     let (mock_block_header_deserialized, _network_name) = block_info.into_mock();
@@ -120,5 +120,8 @@ fn latest_block_should_succeed() {
 fn latest_block_empty_db_should_fail() {
     let fixture = LmdbTestFixture::new(Some("block_header_faulty"));
     let out_file_path = OUT_DIR.as_ref().join("empty.json");
-    assert!(read_db::latest_block(fixture.tmp_file.path(), Some(out_file_path.as_path())).is_err());
+    assert!(
+        read_db::latest_block_summary(fixture.tmp_file.path(), Some(out_file_path.as_path()))
+            .is_err()
+    );
 }

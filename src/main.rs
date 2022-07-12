@@ -9,7 +9,7 @@ use std::{fs::OpenOptions, process};
 use clap::{crate_description, crate_version, Arg, Command};
 use log::error;
 
-use subcommands::{archive, check, latest_block, trie_compact, unsparse};
+use subcommands::{archive, check, latest_block_summary, trie_compact, unsparse};
 
 const LOGGING: &str = "logging";
 
@@ -28,7 +28,9 @@ fn cli() -> Command<'static> {
         .arg_required_else_help(true)
         .subcommand(archive::command(DisplayOrder::Archive as usize))
         .subcommand(check::command(DisplayOrder::Check as usize))
-        .subcommand(latest_block::command(DisplayOrder::LatestBlock as usize))
+        .subcommand(latest_block_summary::command(
+            DisplayOrder::LatestBlock as usize,
+        ))
         .subcommand(trie_compact::command(DisplayOrder::TrieCompact as usize))
         .subcommand(unsparse::command(DisplayOrder::Unsparse as usize))
         .arg(
@@ -66,7 +68,7 @@ fn main() {
     let succeeded = match subcommand_name {
         archive::COMMAND_NAME => archive::run(matches),
         check::COMMAND_NAME => check::run(matches),
-        latest_block::COMMAND_NAME => latest_block::run(matches),
+        latest_block_summary::COMMAND_NAME => latest_block_summary::run(matches),
         trie_compact::COMMAND_NAME => trie_compact::run(matches),
         unsparse::COMMAND_NAME => unsparse::run(matches),
         _ => unreachable!("{} should be handled above", subcommand_name),

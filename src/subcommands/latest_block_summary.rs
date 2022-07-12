@@ -8,7 +8,7 @@ use std::path::Path;
 use clap::{Arg, ArgMatches, Command};
 use log::error;
 
-pub const COMMAND_NAME: &str = "latest-block";
+pub const COMMAND_NAME: &str = "latest-block-summary";
 const DB_PATH: &str = "db-path";
 const OUTPUT: &str = "output";
 
@@ -51,10 +51,10 @@ pub fn command(display_order: usize) -> Command<'static> {
 pub fn run(matches: &ArgMatches) -> bool {
     let path = Path::new(matches.value_of(DB_PATH).expect("should have db-path arg"));
     let output = matches.value_of(OUTPUT).map(Path::new);
-    let result = read_db::latest_block(path, output);
+    let result = read_db::latest_block_summary(path, output);
 
     if let Err(error) = &result {
-        error!("Latest block failed. {}", error);
+        error!("Latest block summary failed. {}", error);
     }
 
     result.is_ok()
