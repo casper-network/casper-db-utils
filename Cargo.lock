@@ -289,6 +289,7 @@ dependencies = [
  "reqwest",
  "ringbuf",
  "serde",
+ "serde_json",
  "simplelog",
  "tar",
  "tempfile",
