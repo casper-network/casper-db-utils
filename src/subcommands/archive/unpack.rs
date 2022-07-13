@@ -53,12 +53,23 @@ fn validate_destination_path<P: AsRef<Path>>(path: P) -> Result<(), Error> {
     let path_ref = path.as_ref();
     if path_ref.exists() {
         if path_ref.is_dir() {
+            if path_ref
+                .read_dir()
+                .map_err(Error::Destination)?
+                .any(|entry| entry.is_ok())
+            {
+                Err(Error::Destination(IoError::new(
+                    ErrorKind::InvalidInput,
+                    "not an empty directory",
+                )))
+            } else {
+                Ok(())
+            }
+        } else {
             Err(Error::Destination(IoError::new(
                 ErrorKind::InvalidInput,
                 "not a directory",
             )))
-        } else {
-            Ok(())
         }
     } else {
         fs::create_dir_all(path_ref).map_err(Error::Destination)

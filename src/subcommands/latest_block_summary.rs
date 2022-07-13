@@ -13,6 +13,7 @@ use thiserror::Error as ThisError;
 
 pub const COMMAND_NAME: &str = "latest-block-summary";
 const DB_PATH: &str = "db-path";
+const OVERWRITE: &str = "overwrite";
 const OUTPUT: &str = "output";
 
 /// Errors encountered when operating on the storage database.
@@ -35,6 +36,7 @@ pub enum Error {
 enum DisplayOrder {
     DbPath,
     Output,
+    Overwrite,
 }
 
 pub fn command(display_order: usize) -> Command<'static> {
@@ -66,10 +68,24 @@ pub fn command(display_order: usize) -> Command<'static> {
                     If unspecified, defaults to standard output.",
                 ),
         )
+        .arg(
+            Arg::new(OVERWRITE)
+                .display_order(DisplayOrder::Overwrite as usize)
+                .required(false)
+                .short('w')
+                .long(OVERWRITE)
+                .takes_value(false)
+                .requires(OUTPUT)
+                .help(
+                    "Overwrite an already existing output file in destination \
+                    directory.",
+                ),
+        )
 }
 
 pub fn run(matches: &ArgMatches) -> Result<(), Error> {
     let path = Path::new(matches.value_of(DB_PATH).expect("should have db-path arg"));
     let output = matches.value_of(OUTPUT).map(Path::new);
-    read_db::latest_block_summary(path, output)
+    let overwrite = matches.is_present(OVERWRITE);
+    read_db::latest_block_summary(path, output, overwrite)
 }

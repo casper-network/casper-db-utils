@@ -13,7 +13,10 @@ use casper_node::types::BlockHeader;
 
 use crate::common::db::{self, BlockHeaderDatabase, Database};
 
-use super::{block_info::{parse_network_name, BlockInfo}, Error};
+use super::{
+    block_info::{parse_network_name, BlockInfo},
+    Error,
+};
 
 fn get_highest_block(env: &Environment) -> Result<BlockHeader, Error> {
     let txn = env.begin_ro_txn()?;
@@ -57,12 +60,16 @@ pub(crate) fn dump_block_info<W: Write + ?Sized>(
 pub fn latest_block_summary<P1: AsRef<Path>, P2: AsRef<Path>>(
     db_path: P1,
     output: Option<P2>,
+    overwrite: bool,
 ) -> Result<(), Error> {
     let env = db::db_env(db_path.as_ref())?;
     // Validate the output file early so that, in case this fails
     // we don't unnecessarily read the whole database.
     let out_writer: Box<dyn Write> = if let Some(out_path) = output {
-        let file = OpenOptions::new().create(true).write(true).open(out_path)?;
+        let file = OpenOptions::new()
+            .create_new(!overwrite)
+            .write(true)
+            .open(out_path)?;
         Box::new(file)
     } else {
         Box::new(io::stdout())

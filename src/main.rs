@@ -71,7 +71,9 @@ fn main() {
     let result: Result<(), Error> = match subcommand_name {
         archive::COMMAND_NAME => archive::run(matches).map_err(Error::from),
         check::COMMAND_NAME => check::run(matches).map_err(Error::from),
-        latest_block_summary::COMMAND_NAME => latest_block_summary::run(matches).map_err(Error::from),
+        latest_block_summary::COMMAND_NAME => {
+            latest_block_summary::run(matches).map_err(Error::from)
+        }
         trie_compact::COMMAND_NAME => trie_compact::run(matches).map_err(Error::from),
         unsparse::COMMAND_NAME => unsparse::run(matches).map_err(Error::from),
         _ => unreachable!("{} should be handled above", subcommand_name),
