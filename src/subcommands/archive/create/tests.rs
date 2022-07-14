@@ -86,10 +86,5 @@ fn archive_create_bad_input() {
     // Destination directory isn't empty.
     let root_dst = tempfile::tempdir().unwrap();
     let existing_file = NamedTempFile::new_in(&root_dst).unwrap();
-    assert!(pack::create_archive(
-        &src_dir,
-        existing_file.path(),
-        false,
-    )
-    .is_err());
+    assert!(pack::create_archive(&src_dir, existing_file.path(), false,).is_err());
 }

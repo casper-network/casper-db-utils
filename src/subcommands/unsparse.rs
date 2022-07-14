@@ -88,8 +88,8 @@ mod tests {
 
     #[test]
     fn should_reduce_lmdb_file_size() {
-        let fixture = LmdbTestFixture::new(Some("a"));
-        let db_path = fixture.tmp_file.path();
+        let fixture = LmdbTestFixture::new(Some("a"), None);
+        let db_path = fixture.file_path.as_path();
         let db_size = || {
             fs::metadata(db_path)
                 .unwrap_or_else(|error| {

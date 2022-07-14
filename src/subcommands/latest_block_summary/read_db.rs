@@ -11,7 +11,7 @@ use serde_json::{self, Error as SerializationError};
 
 use casper_node::types::BlockHeader;
 
-use crate::common::db::{self, BlockHeaderDatabase, Database};
+use crate::common::db::{self, BlockHeaderDatabase, Database, STORAGE_FILE_NAME};
 
 use super::{
     block_info::{parse_network_name, BlockInfo},
@@ -62,7 +62,8 @@ pub fn latest_block_summary<P1: AsRef<Path>, P2: AsRef<Path>>(
     output: Option<P2>,
     overwrite: bool,
 ) -> Result<(), Error> {
-    let env = db::db_env(db_path.as_ref())?;
+    let storage_path = db_path.as_ref().join(STORAGE_FILE_NAME);
+    let env = db::db_env(&storage_path)?;
     // Validate the output file early so that, in case this fails
     // we don't unnecessarily read the whole database.
     let out_writer: Box<dyn Write> = if let Some(out_path) = output {

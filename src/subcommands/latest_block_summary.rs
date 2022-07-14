@@ -54,7 +54,7 @@ pub fn command(display_order: usize) -> Command<'static> {
                 .long(DB_PATH)
                 .takes_value(true)
                 .value_name("DB_PATH")
-                .help("Path to the storage.lmdb file."),
+                .help("Path of the directory with the `storage.lmdb` file."),
         )
         .arg(
             Arg::new(OUTPUT)

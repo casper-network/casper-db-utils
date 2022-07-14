@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{Arg, ArgMatches, Command};
 use lmdb::Error as LmdbError;
@@ -8,7 +8,7 @@ use crate::common::db::{
     db_env, BlockBodyDatabase, BlockBodyMerkleDatabase, BlockHeaderDatabase, BlockMetadataDatabase,
     Database, DeployDatabase, DeployHashesDatabase, DeployMetadataDatabase, Error as DbError,
     FinalizedApprovalsDatabase, ProposerDatabase, StateStoreDatabase, TransferDatabase,
-    TransferHashesDatabase,
+    TransferHashesDatabase, STORAGE_FILE_NAME,
 };
 
 pub const COMMAND_NAME: &str = "check";
@@ -59,7 +59,7 @@ pub fn command(display_order: usize) -> Command<'static> {
                 .long(DB_PATH)
                 .takes_value(true)
                 .value_name("DB_PATH")
-                .help("Path to the storage.lmdb file."),
+                .help("Path of the directory with the `storage.lmdb` file."),
         )
         .arg(
             Arg::new(SPECIFIC)
@@ -99,13 +99,15 @@ pub fn run(matches: &ArgMatches) -> Result<(), Error> {
     check_db(path, failfast, specific, start_at)
 }
 
-fn check_db(
-    path: &str,
+fn check_db<P: AsRef<Path>>(
+    path: P,
     failfast: bool,
     specific: Option<&str>,
     start_at: usize,
 ) -> Result<(), Error> {
-    let env = db_env(path).map_err(|lmdb_err| Error::Path(path.into(), lmdb_err))?;
+    let storage_path = path.as_ref().join(STORAGE_FILE_NAME);
+    let env = db_env(&storage_path)
+        .map_err(|lmdb_err| Error::Path(path.as_ref().to_path_buf(), lmdb_err))?;
     if let Some(db_name) = specific {
         match db_name.trim() {
             "block_body" => BlockBodyDatabase::check_db(&env, failfast, start_at)?,
