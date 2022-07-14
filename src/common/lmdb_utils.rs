@@ -5,7 +5,10 @@ use lmdb_sys::{mdb_stat, MDB_stat};
 
 /// Retrieves the number of entries in a database.
 #[allow(unused)]
-pub fn entries_count<'txn, T: Transaction>(txn: &'txn T, database: Database) -> Result<usize, Error> {
+pub fn entries_count<'txn, T: Transaction>(
+    txn: &'txn T,
+    database: Database,
+) -> Result<usize, Error> {
     unsafe {
         let mut stat = MDB_stat {
             ms_psize: 0,
