@@ -17,9 +17,9 @@ fn gen_faulty_bytes(rng: &mut ThreadRng) -> Vec<u8> {
 
 fn populate_db(env: &Environment, db: &LmdbDatabase) {
     let mut rng = rand::thread_rng();
-    let entries_count = rng.gen_range(10u32..100u32);
+    let entry_count = rng.gen_range(10u32..100u32);
     let mut rw_tx = env.begin_rw_txn().expect("couldn't begin rw transaction");
-    for i in 0..entries_count {
+    for i in 0..entry_count {
         let bytes = gen_bytes(&mut rng);
         let key: [u8; 4] = i.to_le_bytes();
         rw_tx.put(*db, &key, &bytes, WriteFlags::empty()).unwrap();
@@ -29,9 +29,9 @@ fn populate_db(env: &Environment, db: &LmdbDatabase) {
 
 fn populate_faulty_db(env: &Environment, db: &LmdbDatabase) {
     let mut rng = rand::thread_rng();
-    let entries_count = rng.gen_range(10u32..100u32);
+    let entry_count = rng.gen_range(10u32..100u32);
     let mut rw_tx = env.begin_rw_txn().expect("couldn't begin rw transaction");
-    for i in 0..entries_count {
+    for i in 0..entry_count {
         let bytes = if i % 5 == 0 {
             gen_faulty_bytes(&mut rng)
         } else {

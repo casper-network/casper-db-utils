@@ -29,7 +29,7 @@ fn get_highest_block(env: &Environment, log_progress: bool) -> Result<BlockHeade
     let mut max_height = 0u64;
     let mut max_height_key = None;
 
-    let maybe_entry_count = lmdb_utils::entries_count(&txn, db).ok();
+    let maybe_entry_count = lmdb_utils::entry_count(&txn, db).ok();
     let mut maybe_progress_tracker = None;
 
     if let Ok(mut cursor) = txn.open_ro_cursor(db) {

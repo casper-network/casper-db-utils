@@ -5,10 +5,7 @@ use lmdb_sys::{mdb_stat, MDB_stat};
 
 /// Retrieves the number of entries in a database.
 #[allow(unused)]
-pub fn entries_count<'txn, T: Transaction>(
-    txn: &'txn T,
-    database: Database,
-) -> Result<usize, Error> {
+pub fn entry_count<T: Transaction>(txn: &'_ T, database: Database) -> Result<usize, Error> {
     unsafe {
         let mut stat = MDB_stat {
             ms_psize: 0,
@@ -33,16 +30,16 @@ mod tests {
 
     use crate::test_utils::LmdbTestFixture;
 
-    use super::entries_count;
+    use super::entry_count;
 
     #[test]
-    fn db_entries_count() {
+    fn db_entry_count() {
         let fixture = LmdbTestFixture::new(None, None);
         let env = &fixture.env;
         let db = fixture.db;
 
-        if let Ok(mut txn) = env.begin_ro_txn() {
-            assert_eq!(entries_count(&mut txn, db).unwrap(), 0);
+        if let Ok(txn) = env.begin_ro_txn() {
+            assert_eq!(entry_count(&txn, db).unwrap(), 0);
             txn.commit().unwrap();
         }
 
@@ -60,8 +57,8 @@ mod tests {
             txn.commit().unwrap();
         };
 
-        if let Ok(mut txn) = env.begin_ro_txn() {
-            assert_eq!(entries_count(&mut txn, db).unwrap(), 1);
+        if let Ok(txn) = env.begin_ro_txn() {
+            assert_eq!(entry_count(&txn, db).unwrap(), 1);
             txn.commit().unwrap();
         }
 
@@ -77,8 +74,8 @@ mod tests {
             txn.commit().unwrap();
         };
 
-        if let Ok(mut txn) = env.begin_ro_txn() {
-            assert_eq!(entries_count(&mut txn, db).unwrap(), 2);
+        if let Ok(txn) = env.begin_ro_txn() {
+            assert_eq!(entry_count(&txn, db).unwrap(), 2);
             txn.commit().unwrap();
         };
     }
