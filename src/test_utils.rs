@@ -1,8 +1,10 @@
 #![cfg(test)]
 
+use std::{fs::OpenOptions, path::PathBuf};
+
 use lmdb::{Database as LmdbDatabase, DatabaseFlags, Environment, EnvironmentFlags};
 use serde::{Deserialize, Serialize};
-use tempfile::NamedTempFile;
+use tempfile::{NamedTempFile, TempDir};
 
 use casper_hashing::Digest;
 use casper_node::types::{BlockHash, Timestamp};
@@ -11,12 +13,33 @@ use casper_types::{EraId, ProtocolVersion};
 pub struct LmdbTestFixture {
     pub env: Environment,
     pub db: LmdbDatabase,
-    pub tmp_file: NamedTempFile,
+    pub tmp_dir: TempDir,
+    pub file_path: PathBuf,
 }
 
 impl LmdbTestFixture {
-    pub fn new(name: Option<&str>) -> Self {
-        let tmp_file = NamedTempFile::new().unwrap();
+    pub fn new(name: Option<&str>, file_name: Option<&str>) -> Self {
+        let tmp_dir = tempfile::tempdir().unwrap();
+        let file_path = if let Some(name) = file_name {
+            let path = tmp_dir.as_ref().join(name);
+            let _ = OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&path)
+                .unwrap();
+            path
+        } else {
+            let path = NamedTempFile::new_in(tmp_dir.as_ref())
+                .unwrap()
+                .path()
+                .to_path_buf();
+            let _ = OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&path)
+                .unwrap();
+            path
+        };
         let env = Environment::new()
             .set_flags(
                 EnvironmentFlags::WRITE_MAP
@@ -27,12 +50,17 @@ impl LmdbTestFixture {
             .set_max_readers(12)
             .set_map_size(4096 * 10)
             .set_max_dbs(10)
-            .open(tmp_file.path())
+            .open(&file_path)
             .expect("can't create environment");
         let db = env
             .create_db(name, DatabaseFlags::empty())
             .expect("can't create database");
-        LmdbTestFixture { env, db, tmp_file }
+        LmdbTestFixture {
+            env,
+            db,
+            tmp_dir,
+            file_path,
+        }
     }
 }
 

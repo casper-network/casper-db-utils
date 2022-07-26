@@ -16,6 +16,7 @@ const BUFFER_CAPACITY: usize = 1_000;
 pub fn create_archive<P1: AsRef<Path>, P2: AsRef<Path>>(
     db_dir_path: P1,
     dest: P2,
+    overwrite: bool,
 ) -> Result<(), Error> {
     let ring_buffer = BlockingRingBuffer::new(BUFFER_CAPACITY);
     let (producer, mut consumer) = ring_buffer.split();
@@ -23,17 +24,18 @@ pub fn create_archive<P1: AsRef<Path>, P2: AsRef<Path>>(
     let db_dir_path_copy = db_dir_path.as_ref().to_path_buf();
     let handle = thread::spawn(move || {
         let mut archive_stream =
-            ArchiveStream::new(&db_dir_path_copy, producer).unwrap_or_else(|_| {
+            ArchiveStream::new(&db_dir_path_copy, producer).unwrap_or_else(|io_err| {
                 panic!(
-                    "Couldn't read files from {}",
-                    db_dir_path_copy.to_string_lossy()
+                    "Couldn't read files from {}: {}",
+                    db_dir_path_copy.to_string_lossy(),
+                    io_err
                 )
             });
         archive_stream.pack().expect("Couldn't archive files");
     });
 
     let output_file = OpenOptions::new()
-        .create_new(true)
+        .create_new(!overwrite)
         .write(true)
         .open(&dest)
         .map_err(Error::Destination)?;

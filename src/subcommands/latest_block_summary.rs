@@ -3,18 +3,40 @@ mod read_db;
 #[cfg(test)]
 mod tests;
 
-use std::path::Path;
+use std::{io::Error as IoError, path::Path};
 
+use bincode::Error as BincodeError;
 use clap::{Arg, ArgMatches, Command};
-use log::error;
+use lmdb::Error as LmdbError;
+use serde_json::Error as SerializationError;
+use thiserror::Error as ThisError;
 
 pub const COMMAND_NAME: &str = "latest-block-summary";
 const DB_PATH: &str = "db-path";
+const OVERWRITE: &str = "overwrite";
 const OUTPUT: &str = "output";
+
+/// Errors encountered when operating on the storage database.
+#[derive(Debug, ThisError)]
+pub enum Error {
+    #[error("No blocks found in the block header database")]
+    EmptyDatabase,
+    /// Parsing error on entry at index in the database.
+    #[error("Error parsing element {0}: {1}")]
+    Parsing(usize, BincodeError),
+    /// Database operation error.
+    #[error("Error operating the database: {0}")]
+    Database(#[from] LmdbError),
+    #[error("Error serializing output: {0}")]
+    Serialize(#[from] SerializationError),
+    #[error("Error writing output: {0}")]
+    Output(#[from] IoError),
+}
 
 enum DisplayOrder {
     DbPath,
     Output,
+    Overwrite,
 }
 
 pub fn command(display_order: usize) -> Command<'static> {
@@ -32,7 +54,7 @@ pub fn command(display_order: usize) -> Command<'static> {
                 .long(DB_PATH)
                 .takes_value(true)
                 .value_name("DB_PATH")
-                .help("Path to the storage.lmdb file."),
+                .help("Path of the directory with the `storage.lmdb` file."),
         )
         .arg(
             Arg::new(OUTPUT)
@@ -46,16 +68,24 @@ pub fn command(display_order: usize) -> Command<'static> {
                     If unspecified, defaults to standard output.",
                 ),
         )
+        .arg(
+            Arg::new(OVERWRITE)
+                .display_order(DisplayOrder::Overwrite as usize)
+                .required(false)
+                .short('w')
+                .long(OVERWRITE)
+                .takes_value(false)
+                .requires(OUTPUT)
+                .help(
+                    "Overwrite an already existing output file in destination \
+                    directory.",
+                ),
+        )
 }
 
-pub fn run(matches: &ArgMatches) -> bool {
+pub fn run(matches: &ArgMatches) -> Result<(), Error> {
     let path = Path::new(matches.value_of(DB_PATH).expect("should have db-path arg"));
     let output = matches.value_of(OUTPUT).map(Path::new);
-    let result = read_db::latest_block_summary(path, output);
-
-    if let Err(error) = &result {
-        error!("Latest block summary failed. {}", error);
-    }
-
-    result.is_ok()
+    let overwrite = matches.is_present(OVERWRITE);
+    read_db::latest_block_summary(path, output, overwrite)
 }

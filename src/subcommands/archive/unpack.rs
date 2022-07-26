@@ -53,12 +53,23 @@ fn validate_destination_path<P: AsRef<Path>>(path: P) -> Result<(), Error> {
     let path_ref = path.as_ref();
     if path_ref.exists() {
         if path_ref.is_dir() {
+            if path_ref
+                .read_dir()
+                .map_err(Error::Destination)?
+                .any(|entry| entry.is_ok())
+            {
+                Err(Error::Destination(IoError::new(
+                    ErrorKind::InvalidInput,
+                    "not an empty directory",
+                )))
+            } else {
+                Ok(())
+            }
+        } else {
             Err(Error::Destination(IoError::new(
                 ErrorKind::InvalidInput,
                 "not a directory",
             )))
-        } else {
-            Ok(())
         }
     } else {
         fs::create_dir_all(path_ref).map_err(Error::Destination)
@@ -117,7 +128,7 @@ pub fn command(display_order: usize) -> Command<'static> {
         )
 }
 
-pub fn run(matches: &ArgMatches) -> bool {
+pub fn run(matches: &ArgMatches) -> Result<(), Error> {
     let input = matches
         .value_of(URL)
         .map(|url| Input::Url(url.to_string()))
@@ -128,11 +139,5 @@ pub fn run(matches: &ArgMatches) -> bool {
                 .unwrap_or_else(|| panic!("Should have one of {} or {}", FILE, URL))
         });
     let dest = matches.value_of(OUTPUT).unwrap();
-    let result = unpack(input, dest);
-
-    if let Err(error) = &result {
-        error!("Archive unpack failed. {}", error);
-    }
-
-    result.is_ok()
+    unpack(input, dest)
 }
