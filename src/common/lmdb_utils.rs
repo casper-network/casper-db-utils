@@ -4,7 +4,6 @@ use lmdb::{Database, Error, Transaction};
 use lmdb_sys::{mdb_stat, MDB_stat};
 
 /// Retrieves the number of entries in a database.
-#[allow(unused)]
 pub fn entry_count<T: Transaction>(txn: &'_ T, database: Database) -> Result<usize, Error> {
     unsafe {
         let mut stat = MDB_stat {
@@ -76,6 +75,17 @@ mod tests {
 
         if let Ok(txn) = env.begin_ro_txn() {
             assert_eq!(entry_count(&txn, db).unwrap(), 2);
+            txn.commit().unwrap();
+        };
+
+        // Delete the first entry from the database.
+        if let Ok(mut txn) = env.begin_rw_txn() {
+            txn.del(fixture.db, &first_dummy_input, None).unwrap();
+            txn.commit().unwrap();
+        };
+
+        if let Ok(txn) = env.begin_ro_txn() {
+            assert_eq!(entry_count(&txn, db).unwrap(), 1);
             txn.commit().unwrap();
         };
     }
