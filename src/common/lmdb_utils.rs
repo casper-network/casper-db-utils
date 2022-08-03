@@ -5,21 +5,19 @@ use lmdb_sys::{mdb_stat, MDB_stat};
 
 /// Retrieves the number of entries in a database.
 pub fn entry_count<T: Transaction>(txn: &'_ T, database: Database) -> Result<usize, Error> {
-    unsafe {
-        let mut stat = MDB_stat {
-            ms_psize: 0,
-            ms_depth: 0,
-            ms_branch_pages: 0,
-            ms_leaf_pages: 0,
-            ms_overflow_pages: 0,
-            ms_entries: 0,
-        };
-        let result = mdb_stat(txn.txn(), database.dbi(), &mut stat as *mut MDB_stat);
-        if result != 0 {
-            Err(Error::from_err_code(result))
-        } else {
-            Ok(stat.ms_entries)
-        }
+    let mut stat = MDB_stat {
+        ms_psize: 0,
+        ms_depth: 0,
+        ms_branch_pages: 0,
+        ms_leaf_pages: 0,
+        ms_overflow_pages: 0,
+        ms_entries: 0,
+    };
+    let result = unsafe { mdb_stat(txn.txn(), database.dbi(), &mut stat as *mut MDB_stat) };
+    if result != 0 {
+        Err(Error::from_err_code(result))
+    } else {
+        Ok(stat.ms_entries)
     }
 }
 
