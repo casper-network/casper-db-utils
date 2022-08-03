@@ -36,7 +36,18 @@ fn get_highest_block(env: &Environment, log_progress: bool) -> Result<BlockHeade
         if log_progress {
             match maybe_entry_count {
                 Some(entry_count) => {
-                    maybe_progress_tracker = Some(ProgressTracker::new(entry_count))
+                    match ProgressTracker::new(
+                        entry_count,
+                        Box::new(|completion| {
+                            info!("Database parsing {}% complete...", completion)
+                        }),
+                    ) {
+                        Ok(progress_tracker) => maybe_progress_tracker = Some(progress_tracker),
+                        Err(progress_tracker_error) => warn!(
+                            "Couldn't initialize progress tracker: {}",
+                            progress_tracker_error
+                        ),
+                    }
                 }
                 None => warn!("Unable to count db entries, progress will not be logged."),
             }
@@ -51,15 +62,8 @@ fn get_highest_block(env: &Environment, log_progress: bool) -> Result<BlockHeade
             }
 
             if let Some(progress_tracker) = maybe_progress_tracker.as_mut() {
-                progress_tracker.advance(1, |completion| {
-                    info!("Database parsing {}% complete...", completion)
-                });
+                progress_tracker.advance_by(1);
             }
-        }
-
-        if let Some(progress_tracker) = maybe_progress_tracker.take() {
-            progress_tracker
-                .finish(|| info!("Database parsing complete, creating highest block metadata."));
         }
     }
 

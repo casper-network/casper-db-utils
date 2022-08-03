@@ -5,7 +5,7 @@ use std::{
     result::Result,
 };
 
-use log::info;
+use log::{info, warn};
 
 use super::Error;
 use crate::{
@@ -20,9 +20,31 @@ struct FileStream<R> {
 
 impl<R: Read> FileStream<R> {
     fn new(reader: R, maybe_len: Option<usize>) -> Self {
+        let mut maybe_progress_tracker = None;
+        match maybe_len {
+            Some(len) => match ProgressTracker::new(
+                len,
+                Box::new(|completion| {
+                    info!(
+                        "Archive reading and decompressing {}% complete...",
+                        completion
+                    )
+                }),
+            ) {
+                Ok(progress_tracker) => maybe_progress_tracker = Some(progress_tracker),
+                Err(progress_tracker_error) => {
+                    warn!(
+                        "Couldn't initialize progress tracker: {}",
+                        progress_tracker_error
+                    )
+                }
+            },
+            None => warn!("Unable to read file size, progress will not be logged."),
+        }
+
         Self {
             reader,
-            maybe_progress_tracker: maybe_len.map(ProgressTracker::new),
+            maybe_progress_tracker,
         }
     }
 }
@@ -31,19 +53,9 @@ impl<R: Read> Read for FileStream<R> {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, IoError> {
         let bytes_read = self.reader.read(buf)?;
         if let Some(progress_tracker) = self.maybe_progress_tracker.as_mut() {
-            progress_tracker.advance(bytes_read, |completion| {
-                info!("Archive reading {}% complete...", completion)
-            });
+            progress_tracker.advance_by(bytes_read);
         }
         Ok(bytes_read)
-    }
-}
-
-impl<R> Drop for FileStream<R> {
-    fn drop(&mut self) {
-        if let Some(progress_tracker) = self.maybe_progress_tracker.take() {
-            progress_tracker.finish(|| info!("Decompression complete."));
-        }
     }
 }
 

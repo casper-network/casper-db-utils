@@ -5,7 +5,7 @@ use std::{
 };
 
 use futures::{io, AsyncRead, AsyncReadExt, TryStreamExt};
-use log::info;
+use log::{info, warn};
 use tokio::runtime::{Builder as TokioRuntimeBuilder, Runtime};
 
 use super::Error;
@@ -43,10 +43,27 @@ impl HttpStream {
         let (http_stream, maybe_content_length) = runtime.block_on(response_future)?;
         let http_stream = http_stream.into_async_read();
         let reader = Box::new(http_stream) as Box<dyn AsyncRead + Unpin>;
+        let mut maybe_progress_tracker = None;
+        match maybe_content_length {
+            Some(len) => match ProgressTracker::new(
+                len,
+                Box::new(|completion| info!("Download {}% complete...", completion)),
+            ) {
+                Ok(progress_tracker) => maybe_progress_tracker = Some(progress_tracker),
+                Err(progress_tracker_error) => {
+                    warn!(
+                        "Couldn't initialize progress tracker: {}",
+                        progress_tracker_error
+                    )
+                }
+            },
+            None => warn!("No stream length provided, progress will not be logged."),
+        }
+
         Ok(Self {
             runtime,
             reader,
-            maybe_progress_tracker: maybe_content_length.map(ProgressTracker::new),
+            maybe_progress_tracker,
         })
     }
 }
@@ -56,19 +73,9 @@ impl Read for HttpStream {
         let fut = async { self.reader.read(buf).await };
         let bytes_read = self.runtime.block_on(fut)?;
         if let Some(progress_tracker) = self.maybe_progress_tracker.as_mut() {
-            progress_tracker.advance(bytes_read, |completion| {
-                info!("Download {}% complete...", completion)
-            });
+            progress_tracker.advance_by(bytes_read);
         }
         Ok(bytes_read)
-    }
-}
-
-impl Drop for HttpStream {
-    fn drop(&mut self) {
-        if let Some(progress_tracker) = self.maybe_progress_tracker.take() {
-            progress_tracker.finish(|| info!("Download complete."));
-        }
     }
 }
 
