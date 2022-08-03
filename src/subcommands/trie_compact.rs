@@ -43,7 +43,7 @@ pub enum Error {
     #[error("Path {0} cannot be created/resolved: {1}")]
     InvalidPath(PathBuf, IoError),
     /// Error while operating on LMDB.
-    #[error("Error operation on LMDB: {0}")]
+    #[error("Error while operating on LMDB: {0}")]
     LmdbOperation(LmdbError),
     /// A block of specific height is missing from the storage.
     #[error("Storage database is missing block {0}")]
