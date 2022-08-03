@@ -94,7 +94,7 @@ pub fn run(matches: &ArgMatches) -> Result<(), Error> {
         .value_of(START_AT)
         .expect("should have a default")
         .parse()
-        .expect("Value of \"--start-at\" must be an integer.");
+        .unwrap_or_else(|_| panic!("Value of \"--{}\" must be an integer.", START_AT));
 
     check_db(path, failfast, specific, start_at)
 }

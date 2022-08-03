@@ -1,3 +1,6 @@
+const STEPS: usize = 20;
+const PROGRESS_MULTIPLIER: u64 = 100 / STEPS as u64;
+
 pub struct ProgressTracker {
     total_to_process: usize,
     processed: usize,
@@ -15,8 +18,8 @@ impl ProgressTracker {
 
     pub fn advance<F: Fn(u64)>(&mut self, step: usize, log_progress: F) {
         self.processed += step;
-        while self.processed > (self.total_to_process * self.progress_factor as usize) / 20 {
-            log_progress(self.progress_factor * 5);
+        while self.processed > (self.total_to_process * self.progress_factor as usize) / STEPS {
+            log_progress(self.progress_factor * PROGRESS_MULTIPLIER);
             self.progress_factor += 1;
         }
     }
