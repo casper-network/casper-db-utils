@@ -9,7 +9,7 @@ use std::{fs::OpenOptions, process};
 use clap::{crate_description, crate_version, Arg, Command};
 use log::error;
 
-use subcommands::{archive, check, latest_block_summary, trie_compact, unsparse};
+use subcommands::{archive, check, latest_block_summary, trie_compact, unsparse, Error};
 
 const LOGGING: &str = "logging";
 
@@ -61,20 +61,26 @@ fn main() {
     );
 
     let (subcommand_name, matches) = arg_matches.subcommand().unwrap_or_else(|| {
-        error!("{}", cli().get_long_about().unwrap());
+        error!(
+            "{}",
+            cli().get_long_about().expect("should have long about")
+        );
         process::exit(1);
     });
 
-    let succeeded = match subcommand_name {
-        archive::COMMAND_NAME => archive::run(matches),
-        check::COMMAND_NAME => check::run(matches),
-        latest_block_summary::COMMAND_NAME => latest_block_summary::run(matches),
-        trie_compact::COMMAND_NAME => trie_compact::run(matches),
-        unsparse::COMMAND_NAME => unsparse::run(matches),
+    let result: Result<(), Error> = match subcommand_name {
+        archive::COMMAND_NAME => archive::run(matches).map_err(Error::from),
+        check::COMMAND_NAME => check::run(matches).map_err(Error::from),
+        latest_block_summary::COMMAND_NAME => {
+            latest_block_summary::run(matches).map_err(Error::from)
+        }
+        trie_compact::COMMAND_NAME => trie_compact::run(matches).map_err(Error::from),
+        unsparse::COMMAND_NAME => unsparse::run(matches).map_err(Error::from),
         _ => unreachable!("{} should be handled above", subcommand_name),
     };
 
-    if !succeeded {
+    if let Err(run_err) = result {
+        error!("{}", run_err);
         process::exit(1);
     }
 }

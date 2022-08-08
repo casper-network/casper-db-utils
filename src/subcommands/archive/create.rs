@@ -11,6 +11,7 @@ use thiserror::Error as ThisError;
 use super::zstd_utils::Error as ZstdError;
 
 pub const COMMAND_NAME: &str = "create";
+const OVERWRITE: &str = "overwrite";
 const OUTPUT: &str = "output";
 const DB: &str = "db-dir";
 
@@ -29,6 +30,7 @@ pub enum Error {
 enum DisplayOrder {
     Db,
     Output,
+    Overwrite,
 }
 
 pub fn command(display_order: usize) -> Command<'static> {
@@ -57,16 +59,23 @@ pub fn command(display_order: usize) -> Command<'static> {
                 .value_name("FILE_PATH")
                 .help("Output file path for the compressed tar archive."),
         )
+        .arg(
+            Arg::new(OVERWRITE)
+                .display_order(DisplayOrder::Overwrite as usize)
+                .required(false)
+                .short('w')
+                .long(OVERWRITE)
+                .takes_value(false)
+                .help(
+                    "Overwrite an already existing archive file in destination \
+                    directory.",
+                ),
+        )
 }
 
-pub fn run(matches: &ArgMatches) -> bool {
+pub fn run(matches: &ArgMatches) -> Result<(), Error> {
     let db_path = matches.value_of(DB).unwrap();
     let dest = matches.value_of(OUTPUT).unwrap();
-    let result = pack::create_archive(db_path, dest);
-
-    if let Err(error) = &result {
-        error!("Archive packing failed. {}", error);
-    }
-
-    result.is_ok()
+    let overwrite = matches.is_present(OVERWRITE);
+    pack::create_archive(db_path, dest, overwrite)
 }

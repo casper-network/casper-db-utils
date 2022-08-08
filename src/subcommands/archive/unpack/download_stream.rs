@@ -1,18 +1,23 @@
-use std::{io::Read, path::Path, result::Result};
+use std::{
+    io::{Error as IoError, Read},
+    path::Path,
+    result::Result,
+};
 
 use futures::{io, AsyncRead, AsyncReadExt, TryStreamExt};
-use log::info;
+use log::{info, warn};
 use tokio::runtime::{Builder as TokioRuntimeBuilder, Runtime};
 
 use super::Error;
-use crate::subcommands::archive::{tar_utils, zstd_utils};
+use crate::{
+    common::progress::ProgressTracker,
+    subcommands::archive::{tar_utils, zstd_utils},
+};
 
-pub struct HttpStream {
+struct HttpStream {
     runtime: Runtime,
     reader: Box<dyn AsyncRead + Unpin>,
-    pub stream_length: Option<usize>,
-    pub total_bytes_read: usize,
-    pub progress: u64,
+    maybe_progress_tracker: Option<ProgressTracker>,
 }
 
 impl HttpStream {
@@ -21,13 +26,9 @@ impl HttpStream {
             let response_fut = reqwest::get(url).await;
             match response_fut {
                 Ok(response) => {
-                    let maybe_len = response.content_length().map(|len| {
+                    let maybe_len = response.content_length().and_then(|len| {
                         info!("Download size: {} bytes.", len);
-                        // Highly unlikely scenario where we can't convert `u64` to `usize`.
-                        // This would mean we're running on a 32-bit or older system and the
-                        // content length cannot be represented in that system's pointer size.
-                        len.try_into()
-                            .expect("Couldn't convert content length from u64 to usize")
+                        len.try_into().ok()
                     });
                     Ok((
                         response.bytes_stream().map_err(|reqwest_err| {
@@ -42,26 +43,37 @@ impl HttpStream {
         let (http_stream, maybe_content_length) = runtime.block_on(response_future)?;
         let http_stream = http_stream.into_async_read();
         let reader = Box::new(http_stream) as Box<dyn AsyncRead + Unpin>;
+        let mut maybe_progress_tracker = None;
+        match maybe_content_length {
+            Some(len) => match ProgressTracker::new(
+                len,
+                Box::new(|completion| info!("Download {}% complete...", completion)),
+            ) {
+                Ok(progress_tracker) => maybe_progress_tracker = Some(progress_tracker),
+                Err(progress_tracker_error) => {
+                    warn!(
+                        "Couldn't initialize progress tracker: {}",
+                        progress_tracker_error
+                    )
+                }
+            },
+            None => warn!("No stream length provided, progress will not be logged."),
+        }
+
         Ok(Self {
             runtime,
             reader,
-            stream_length: maybe_content_length,
-            total_bytes_read: 0,
-            progress: 1,
+            maybe_progress_tracker,
         })
     }
 }
 
 impl Read for HttpStream {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, IoError> {
         let fut = async { self.reader.read(buf).await };
         let bytes_read = self.runtime.block_on(fut)?;
-        self.total_bytes_read += bytes_read;
-        if let Some(stream_len) = self.stream_length {
-            while self.total_bytes_read > (stream_len * self.progress as usize) / 20 {
-                info!("Download {}% complete...", self.progress * 5);
-                self.progress += 1;
-            }
+        if let Some(progress_tracker) = self.maybe_progress_tracker.as_mut() {
+            progress_tracker.advance_by(bytes_read);
         }
         Ok(bytes_read)
     }
@@ -77,6 +89,5 @@ pub fn download_and_unpack_archive<P: AsRef<Path>>(url: &str, dest: P) -> Result
     let decoder = zstd_utils::zstd_decode_stream(http_stream)?;
     let mut unpacker = tar_utils::unarchive_stream(decoder);
     unpacker.unpack(&dest).map_err(Error::Streaming)?;
-    info!("Download complete.");
     Ok(())
 }

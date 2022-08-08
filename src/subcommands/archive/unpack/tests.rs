@@ -207,8 +207,8 @@ fn archive_unpack_existing_destination() {
 
     // Create the destination file before downloading.
     let _ = File::create(&dest_path).unwrap();
-    // Download should fail because the file is already present. Address doesn't
-    // matter because the file check is performed first.
+    // Download should fail because a file is already present at the destination
+    // directory. Address doesn't matter because the file check is performed first.
     assert!(download_stream::download_and_unpack_archive("bogus_address", dest_path).is_err());
 }
 

@@ -17,8 +17,9 @@ use casper_types::bytesrepr::{Bytes, ToBytes};
 static DEFAULT_MAX_DB_SIZE: Lazy<usize> = Lazy::new(|| super::DEFAULT_MAX_DB_SIZE.parse().unwrap());
 
 use super::{
-    compact::{self, DestinationOptions, Error, TRIE_STORE_FILE_NAME},
+    compact::{self, DestinationOptions, TRIE_STORE_FILE_NAME},
     utils::{create_execution_engine, create_storage, load_execution_engine},
+    Error,
 };
 
 #[derive(Clone, Debug, PartialEq)]

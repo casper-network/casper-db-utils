@@ -60,16 +60,15 @@ impl BlockInfo {
 
 pub fn parse_network_name<P: AsRef<Path>>(path: P) -> Result<String, IoError> {
     let canon_path = fs::canonicalize(path)?;
-    let network_name = canon_path
-        .parent()
-        .ok_or_else(|| IoError::from(ErrorKind::NotFound))?
-        .file_name()
-        .ok_or_else(|| {
-            IoError::new(
-                ErrorKind::InvalidInput,
-                "Path cannot be represented in UTF-8",
-            )
-        })?;
+    if !canon_path.is_dir() {
+        return Err(IoError::new(ErrorKind::InvalidInput, "Not a directory"));
+    }
+    let network_name = canon_path.file_name().ok_or_else(|| {
+        IoError::new(
+            ErrorKind::InvalidInput,
+            "Path cannot be represented in UTF-8",
+        )
+    })?;
     network_name
         .to_str()
         .ok_or_else(|| {

@@ -1,11 +1,26 @@
-use std::{fs, path::Path};
+use std::{
+    fs,
+    io::Error as IoError,
+    path::{Path, PathBuf},
+};
 
 use clap::{Arg, ArgMatches, Command};
-use lmdb::{Environment, EnvironmentFlags};
+use lmdb::{Environment, EnvironmentFlags, Error as LmdbError};
 use log::{error, info};
+use thiserror::Error as ThisError;
 
 pub const COMMAND_NAME: &str = "unsparse";
 const DB_PATH: &str = "file-path";
+
+#[derive(ThisError, Debug)]
+pub enum Error {
+    #[error("Failed to get metadata for {0}: {1}")]
+    Metadata(PathBuf, IoError),
+    #[error("Failed to open lmdb database at {0}: {1}")]
+    Lmdb(PathBuf, LmdbError),
+    #[error("Failed to reduce size of {0} from {1} bytes")]
+    Size(PathBuf, u64),
+}
 
 pub fn command(display_order: usize) -> Command<'static> {
     Command::new(COMMAND_NAME)
@@ -23,7 +38,7 @@ pub fn command(display_order: usize) -> Command<'static> {
         )
 }
 
-pub fn run(matches: &ArgMatches) -> bool {
+pub fn run(matches: &ArgMatches) -> Result<(), Error> {
     let path = Path::new(
         matches
             .value_of(DB_PATH)
@@ -32,35 +47,21 @@ pub fn run(matches: &ArgMatches) -> bool {
     unsparse(path)
 }
 
-fn unsparse(path: &Path) -> bool {
-    let size_before = match fs::metadata(path) {
-        Ok(metadata) => metadata.len(),
-        Err(error) => {
-            error!("Failed to get metadata for {}: {}", path.display(), error);
-            return false;
-        }
-    };
+fn unsparse(path: &Path) -> Result<(), Error> {
+    let size_before = fs::metadata(path)
+        .map(|metadata| metadata.len())
+        .map_err(|io_err| Error::Metadata(path.to_path_buf(), io_err))?;
 
-    let _env = match Environment::new()
+    let _env = Environment::new()
         .set_flags(EnvironmentFlags::WRITE_MAP | EnvironmentFlags::NO_SUB_DIR)
         .set_max_dbs(100)
         .set_map_size(1)
         .open(path)
-    {
-        Ok(env) => env,
-        Err(error) => {
-            error!("Failed to open {}: {}", path.display(), error);
-            return false;
-        }
-    };
+        .map_err(|lmdb_err| Error::Lmdb(path.to_path_buf(), lmdb_err))?;
 
-    let size_after = match fs::metadata(path) {
-        Ok(metadata) => metadata.len(),
-        Err(error) => {
-            error!("Failed to get metadata for {}: {}", path.display(), error);
-            return false;
-        }
-    };
+    let size_after = fs::metadata(path)
+        .map(|metadata| metadata.len())
+        .map_err(|io_err| Error::Metadata(path.to_path_buf(), io_err))?;
 
     if size_before > size_after {
         info!(
@@ -69,14 +70,14 @@ fn unsparse(path: &Path) -> bool {
             size_before,
             size_after
         );
-        true
+        Ok(())
     } else {
         error!(
             "Failed to reduce size of {} from {} bytes.",
             path.display(),
             size_before
         );
-        false
+        Err(Error::Size(path.to_path_buf(), size_before))
     }
 }
 
@@ -87,8 +88,8 @@ mod tests {
 
     #[test]
     fn should_reduce_lmdb_file_size() {
-        let fixture = LmdbTestFixture::new(Some("a"));
-        let db_path = fixture.tmp_file.path();
+        let fixture = LmdbTestFixture::new(Some("a"), None);
+        let db_path = fixture.file_path.as_path();
         let db_size = || {
             fs::metadata(db_path)
                 .unwrap_or_else(|error| {
@@ -97,11 +98,11 @@ mod tests {
                 .len()
         };
         let size_before = db_size();
-        assert!(unsparse(db_path), "unsparse should succeed");
+        unsparse(db_path).expect("unsparse should succeed");
         let size_after = db_size();
         assert!(size_after < size_before, "unsparse should reduce file size");
 
-        assert!(!unsparse(db_path), "repeat unsparse should fail");
+        assert!(unsparse(db_path).is_err(), "repeat unsparse should fail");
         assert_eq!(db_size(), size_after, "file size should be unchanged");
     }
 }
