@@ -26,7 +26,7 @@ fn memoized_find_missing_descendants<'env>(
     time_in_missing_trie_keys: &mut Duration,
 ) -> Result<(), anyhow::Error> {
     // A first bytes of `0` indicates a leaf. We short-circuit the function here to speed things up.
-    if let Some(0u8) = value_bytes.get(0) {
+    if let Some(0u8) = value_bytes.first() {
         return Ok(());
     }
     let start_trie_keys = Instant::now();

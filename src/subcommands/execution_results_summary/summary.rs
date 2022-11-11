@@ -1,14 +1,14 @@
 use std::collections::BTreeMap;
 
 use casper_types::{bytesrepr::ToBytes, ExecutionResult};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::Error;
 
 #[cfg(not(test))]
 pub(crate) const CHUNK_SIZE_BYTES: usize = 8 * 1024 * 1024;
 #[cfg(test)]
-pub(crate) const CHUNK_SIZE_BYTES: usize = 100;
+pub(crate) const CHUNK_SIZE_BYTES: usize = 20;
 const LAST_ELEM_INDEX_IN_CHUNK: usize = CHUNK_SIZE_BYTES - 1;
 
 #[inline]
@@ -84,14 +84,22 @@ impl ExecutionResultsStats {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct CollectionStatistics {
     pub(crate) average: f64,
     pub(crate) median: usize,
     pub(crate) max: usize,
 }
 
-#[derive(Clone, Debug, Serialize)]
+impl PartialEq for CollectionStatistics {
+    fn eq(&self, other: &Self) -> bool {
+        (self.average - other.average).abs() < 0.1
+            && self.median == other.median
+            && self.max == other.max
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub(crate) struct ExecutionResultsSummary {
     pub(crate) execution_results_size: CollectionStatistics,
     pub(crate) chunks_statistics: CollectionStatistics,

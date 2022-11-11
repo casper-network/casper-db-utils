@@ -11,25 +11,20 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub struct BlockBody {
     proposer: PublicKey,
-    deploy_hashes: Vec<DeployHash>,
-    transfer_hashes: Vec<DeployHash>,
+    pub deploy_hashes: Vec<DeployHash>,
+    pub transfer_hashes: Vec<DeployHash>,
     #[serde(skip)]
     hash: OnceCell<Digest>,
 }
 
 impl BlockBody {
-    #[allow(unused)]
     #[cfg(test)]
     /// Creates a new body from deploy and transfer hashes.
-    pub(crate) fn new(
-        proposer: PublicKey,
-        deploy_hashes: Vec<DeployHash>,
-        transfer_hashes: Vec<DeployHash>,
-    ) -> Self {
+    pub(crate) fn new(deploy_hashes: Vec<DeployHash>) -> Self {
         BlockBody {
-            proposer,
+            proposer: PublicKey::System,
             deploy_hashes,
-            transfer_hashes,
+            transfer_hashes: vec![],
             hash: OnceCell::new(),
         }
     }
