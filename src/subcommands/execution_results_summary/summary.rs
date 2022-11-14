@@ -12,8 +12,8 @@ pub(crate) const CHUNK_SIZE_BYTES: usize = 20;
 const LAST_ELEM_INDEX_IN_CHUNK: usize = CHUNK_SIZE_BYTES - 1;
 
 #[inline]
-pub(crate) fn chunk_count_after_partition(element_count: usize) -> usize {
-    (element_count + LAST_ELEM_INDEX_IN_CHUNK) / CHUNK_SIZE_BYTES
+pub(crate) fn chunk_count_after_partition(data_size: usize) -> usize {
+    (data_size + LAST_ELEM_INDEX_IN_CHUNK) / CHUNK_SIZE_BYTES
 }
 
 fn summarize_map(map: &BTreeMap<usize, usize>, elem_count: usize) -> CollectionStatistics {
@@ -46,10 +46,17 @@ fn summarize_map(map: &BTreeMap<usize, usize>, elem_count: usize) -> CollectionS
     }
 }
 
+/// Holds the statistics of execution results present in a node database.
 #[derive(Debug, Default)]
 pub struct ExecutionResultsStats {
+    /// Ordered frequency list of execution results sizes (bincode encoded
+    /// byte length).
     pub execution_results_size: BTreeMap<usize, usize>,
+    /// Ordered frequency list of execution results chunk counts (number of
+    /// chunks the bytesrepr encoded execution results would be split into,
+    /// according to `CHUNK_SIZE_BYTES`).
     pub chunk_count: BTreeMap<usize, usize>,
+    /// Number of execution results inserted into the statistics structure.
     pub execution_results_insert_counter: usize,
 }
 
@@ -57,37 +64,47 @@ impl ExecutionResultsStats {
     pub fn feed(&mut self, execution_results: Vec<ExecutionResult>) -> Result<(), Error> {
         // Calculate the length of the bincode serialized execution
         // results.
-        let bincode_encoded_execution_results_length =
-            bincode::serialized_size(&execution_results)?;
+        let bincode_encoded_execution_results_size = bincode::serialized_size(&execution_results)?;
+        // Increment the frequency of the calculated size or create a new entry
+        // with frequency 1.
         if let Some(count) = self
             .execution_results_size
-            .get_mut(&(bincode_encoded_execution_results_length as usize))
+            .get_mut(&(bincode_encoded_execution_results_size as usize))
         {
             *count += 1;
         } else {
             self.execution_results_size
-                .insert(bincode_encoded_execution_results_length as usize, 1);
+                .insert(bincode_encoded_execution_results_size as usize, 1);
         }
 
         // Calculate the length of the bytesrepr serialized execution
         // results.
         let bytesrepr_encoded_execution_results_length = execution_results.serialized_length();
+        // Calculate the number of chunks this set of execution results would
+        // be split into.
         let chunks_in_execution_results =
             chunk_count_after_partition(bytesrepr_encoded_execution_results_length);
+        // Increment the frequency of the calculated chunk count or create a
+        // new entry with frequency 1.
         if let Some(count) = self.chunk_count.get_mut(&chunks_in_execution_results) {
             *count += 1;
         } else {
             self.chunk_count.insert(chunks_in_execution_results, 1);
         }
+        // Increment the insertions counter.
         self.execution_results_insert_counter += 1;
         Ok(())
     }
 }
 
+/// Auxiliary struct to hold statistics about a data set.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct CollectionStatistics {
+    /// Average of the set.
     pub(crate) average: f64,
+    /// Median of the set.
     pub(crate) median: usize,
+    /// Maximum of the set.
     pub(crate) max: usize,
 }
 
@@ -99,9 +116,14 @@ impl PartialEq for CollectionStatistics {
     }
 }
 
+/// Summary of statistics of a [`ExecutionResultsStats`].
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub(crate) struct ExecutionResultsSummary {
+    /// Statistics of bincode encoded sizes of execution results per block, in
+    /// bytes.
     pub(crate) execution_results_size: CollectionStatistics,
+    /// Statistics of counts of bytesrepr encoded chunks of execution results
+    /// per block.
     pub(crate) chunks_statistics: CollectionStatistics,
 }
 
