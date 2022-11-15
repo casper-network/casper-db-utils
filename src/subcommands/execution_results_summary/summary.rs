@@ -10,13 +10,19 @@ pub(crate) const CHUNK_SIZE_BYTES: usize = 8 * 1024 * 1024;
 #[cfg(test)]
 pub(crate) const CHUNK_SIZE_BYTES: usize = 20;
 const LAST_ELEM_INDEX_IN_CHUNK: usize = CHUNK_SIZE_BYTES - 1;
+const FLOAT_TOLERANCE: f64 = 0.1;
 
 #[inline]
 pub(crate) fn chunk_count_after_partition(data_size: usize) -> usize {
     (data_size + LAST_ELEM_INDEX_IN_CHUNK) / CHUNK_SIZE_BYTES
 }
 
-fn summarize_map(map: &BTreeMap<usize, usize>, elem_count: usize) -> CollectionStatistics {
+pub(crate) fn summarize_map(
+    map: &BTreeMap<usize, usize>,
+    elem_count: usize,
+) -> CollectionStatistics {
+    // If we have an even number of elements, we pick the greater of the
+    // 2 elements in the middle.
     let median_pos = elem_count / 2;
     let mut sum = 0usize;
     let mut current_idx = 0usize;
@@ -39,11 +45,7 @@ fn summarize_map(map: &BTreeMap<usize, usize>, elem_count: usize) -> CollectionS
         0.0
     };
 
-    CollectionStatistics {
-        average,
-        median,
-        max,
-    }
+    CollectionStatistics::new(average, median, max)
 }
 
 /// Holds the statistics of execution results present in a node database.
@@ -98,7 +100,7 @@ impl ExecutionResultsStats {
 }
 
 /// Auxiliary struct to hold statistics about a data set.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(crate) struct CollectionStatistics {
     /// Average of the set.
     pub(crate) average: f64,
@@ -110,9 +112,19 @@ pub(crate) struct CollectionStatistics {
 
 impl PartialEq for CollectionStatistics {
     fn eq(&self, other: &Self) -> bool {
-        (self.average - other.average).abs() < 0.1
+        (self.average - other.average).abs() < FLOAT_TOLERANCE
             && self.median == other.median
             && self.max == other.max
+    }
+}
+
+impl CollectionStatistics {
+    pub(crate) fn new(average: f64, median: usize, max: usize) -> Self {
+        Self {
+            average,
+            median,
+            max,
+        }
     }
 }
 

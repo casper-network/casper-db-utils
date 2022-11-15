@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     fs::{self, OpenOptions},
     slice,
 };
@@ -8,6 +9,7 @@ use casper_node::types::{BlockHash, DeployMetadata};
 use casper_types::{bytesrepr::ToBytes, DeployHash, ExecutionEffect, ExecutionResult};
 use lmdb::{Transaction, WriteFlags};
 use once_cell::sync::Lazy;
+use rand::Rng;
 use tempfile::{self, TempDir};
 
 use crate::{
@@ -16,8 +18,8 @@ use crate::{
         block_body::BlockBody,
         read_db,
         summary::{
-            chunk_count_after_partition, ExecutionResultsStats, ExecutionResultsSummary,
-            CHUNK_SIZE_BYTES,
+            chunk_count_after_partition, summarize_map, CollectionStatistics,
+            ExecutionResultsStats, ExecutionResultsSummary, CHUNK_SIZE_BYTES,
         },
         Error,
     },
@@ -68,6 +70,78 @@ fn check_chunk_count_after_partition() {
     assert_eq!(chunk_count_after_partition(2 * CHUNK_SIZE_BYTES - 1), 2);
     assert_eq!(chunk_count_after_partition(2 * CHUNK_SIZE_BYTES), 2);
     assert_eq!(chunk_count_after_partition(2 * CHUNK_SIZE_BYTES + 1), 3);
+}
+
+#[test]
+fn check_summarize_map() {
+    // Empty map.
+    assert_eq!(
+        summarize_map(&BTreeMap::default(), 0),
+        CollectionStatistics::default()
+    );
+
+    // 1 element map.
+    let mut map = BTreeMap::default();
+    map.insert(1, 1);
+    assert_eq!(summarize_map(&map, 1), CollectionStatistics::new(1.0, 1, 1));
+
+    // 2 different elements map.
+    let mut map = BTreeMap::default();
+    map.insert(1, 1);
+    map.insert(2, 1);
+    assert_eq!(summarize_map(&map, 2), CollectionStatistics::new(1.5, 2, 2));
+
+    // 2 identical elements map.
+    let mut map = BTreeMap::default();
+    map.insert(1, 2);
+    assert_eq!(summarize_map(&map, 2), CollectionStatistics::new(1.0, 1, 1));
+
+    // 3 elements map.
+    let mut map = BTreeMap::default();
+    map.insert(1, 1);
+    map.insert(4, 2);
+    assert_eq!(summarize_map(&map, 3), CollectionStatistics::new(3.0, 4, 4));
+
+    // 10 elements map.
+    let mut map = BTreeMap::default();
+    map.insert(1, 2);
+    map.insert(3, 2);
+    map.insert(4, 4);
+    map.insert(8, 2);
+    assert_eq!(
+        summarize_map(&map, 10),
+        CollectionStatistics::new(4.0, 4, 8)
+    );
+}
+
+#[test]
+fn check_summarize_map_random() {
+    let mut rng = rand::thread_rng();
+    let elem_count = rng.gen_range(50usize..100usize);
+    let mut elements: Vec<usize> = vec![];
+    let mut sum = 0;
+    for _ in 0..elem_count {
+        let random_element = rng.gen_range(0usize..25usize);
+        sum += random_element;
+        elements.push(random_element);
+    }
+    elements.sort_unstable();
+    let median = elements[elem_count / 2];
+    let max = *elements.last().unwrap();
+    let average = sum as f64 / elem_count as f64;
+
+    let mut map = BTreeMap::default();
+    for element in elements {
+        if let Some(count) = map.get_mut(&element) {
+            *count += 1;
+        } else {
+            map.insert(element, 1);
+        }
+    }
+    assert_eq!(
+        summarize_map(&map, elem_count),
+        CollectionStatistics::new(average, median, max)
+    );
 }
 
 #[test]
