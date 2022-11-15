@@ -102,7 +102,7 @@ fn archive_create_bad_input() {
     // Destination directory doesn't exist.
     let root_dst = tempfile::tempdir().unwrap();
     assert!(pack::create_archive(
-        &src_dir,
+        src_dir,
         root_dst.path().join("bogus_dest/test_archive.tar.zst"),
         false,
     )
