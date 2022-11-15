@@ -99,14 +99,14 @@ fn latest_block_should_succeed() {
     // Insert the 2 blocks into the database.
     if let Ok(mut txn) = env.begin_rw_txn() {
         txn.put(
-            db.clone(),
+            *db,
             &first_block_key,
             &bincode::serialize(&first_block).unwrap(),
             WriteFlags::empty(),
         )
         .unwrap();
         txn.put(
-            db.clone(),
+            *db,
             &second_block_key,
             &bincode::serialize(&second_block).unwrap(),
             WriteFlags::empty(),
@@ -129,7 +129,7 @@ fn latest_block_should_succeed() {
 
     // Delete the second block from the database.
     if let Ok(mut txn) = env.begin_rw_txn() {
-        txn.del(db.clone(), &second_block_key, None).unwrap();
+        txn.del(*db, &second_block_key, None).unwrap();
         txn.commit().unwrap();
     };
 

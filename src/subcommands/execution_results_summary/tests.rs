@@ -283,20 +283,12 @@ fn execution_results_stats_should_succeed() {
     block_bodies.push(BlockBody::new(vec![deploy_hashes[2], deploy_hashes[3]]));
     block_body_deploy_map.push(vec![2, 3]);
 
-    let mut deploy_metadatas = vec![];
-    deploy_metadatas.push(mock_deploy_metadata(slice::from_ref(&block_headers[0].0)));
-    deploy_metadatas.push(mock_deploy_metadata(&[
-        block_headers[0].0,
-        block_headers[1].0,
-    ]));
-    deploy_metadatas.push(mock_deploy_metadata(&[
-        block_headers[1].0,
-        block_headers[2].0,
-    ]));
-    deploy_metadatas.push(mock_deploy_metadata(&[
-        block_headers[0].0,
-        block_headers[2].0,
-    ]));
+    let deploy_metadatas = vec![
+        mock_deploy_metadata(slice::from_ref(&block_headers[0].0)),
+        mock_deploy_metadata(&[block_headers[0].0, block_headers[1].0]),
+        mock_deploy_metadata(&[block_headers[1].0, block_headers[2].0]),
+        mock_deploy_metadata(&[block_headers[0].0, block_headers[2].0]),
+    ];
 
     let env = &fixture.env;
     // Insert the 3 blocks into the database.

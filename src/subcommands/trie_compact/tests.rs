@@ -93,7 +93,7 @@ fn create_data() -> Vec<TestData<Bytes, Bytes>> {
 
 fn create_test_trie_store() -> (TempDir, Vec<TestData<Bytes, Bytes>>) {
     let tmp_dir = tempdir().unwrap();
-    let env = LmdbEnvironment::new(&tmp_dir.path(), *DEFAULT_MAX_DB_SIZE, 512, true).unwrap();
+    let env = LmdbEnvironment::new(tmp_dir.path(), *DEFAULT_MAX_DB_SIZE, 512, true).unwrap();
     let store = LmdbTrieStore::new(&env, None, DatabaseFlags::empty()).unwrap();
     let data = create_data();
 
@@ -119,7 +119,7 @@ fn copy_state_root_roundtrip() {
     let src_tmp_dir = tempdir().unwrap();
     let dst_tmp_dir = tempdir().unwrap();
     let src_env =
-        LmdbEnvironment::new(&src_tmp_dir.path(), *DEFAULT_MAX_DB_SIZE, 512, true).unwrap();
+        LmdbEnvironment::new(src_tmp_dir.path(), *DEFAULT_MAX_DB_SIZE, 512, true).unwrap();
     let src_store = LmdbTrieStore::new(&src_env, None, DatabaseFlags::empty()).unwrap();
     // Construct mock data.
     let data = create_data();
@@ -179,7 +179,7 @@ fn check_no_extra_tries() {
     let src_tmp_dir = tempdir().unwrap();
     let dst_tmp_dir = tempdir().unwrap();
     let src_env =
-        LmdbEnvironment::new(&src_tmp_dir.path(), *DEFAULT_MAX_DB_SIZE, 512, true).unwrap();
+        LmdbEnvironment::new(src_tmp_dir.path(), *DEFAULT_MAX_DB_SIZE, 512, true).unwrap();
     let src_store = LmdbTrieStore::new(&src_env, None, DatabaseFlags::empty()).unwrap();
     // Construct mock data.
     let data = create_data();
