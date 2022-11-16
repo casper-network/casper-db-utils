@@ -5,8 +5,8 @@ use std::{
 };
 
 use casper_hashing::Digest;
-use casper_node::types::{BlockHash, DeployMetadata};
-use casper_types::{bytesrepr::ToBytes, DeployHash, ExecutionEffect, ExecutionResult};
+use casper_node::types::{BlockHash, DeployHash, DeployMetadata};
+use casper_types::{bytesrepr::ToBytes, ExecutionEffect, ExecutionResult};
 use lmdb::{Transaction, WriteFlags};
 use once_cell::sync::Lazy;
 use rand::Rng;
@@ -29,7 +29,7 @@ use crate::{
 static OUT_DIR: Lazy<TempDir> = Lazy::new(|| tempfile::tempdir().unwrap());
 
 fn mock_deploy_hash(idx: u8) -> DeployHash {
-    DeployHash::new([idx; 32])
+    DeployHash::new([idx; 32].into())
 }
 
 fn mock_block_header(idx: u8) -> (BlockHash, MockBlockHeader) {
@@ -316,7 +316,7 @@ fn execution_results_stats_should_succeed() {
         for i in 0..DEPLOY_COUNT {
             txn.put(
                 *fixture.db(Some("deploy_metadata")).unwrap(),
-                &deploy_hashes[i].value(),
+                &deploy_hashes[i],
                 &bincode::serialize(&deploy_metadatas[i]).unwrap(),
                 WriteFlags::empty(),
             )
@@ -425,7 +425,7 @@ fn execution_results_summary_parsing_should_fail() {
         // Store a bogus metadata under the deploy hash key we used before.
         txn.put(
             *fixture.db(Some("deploy_metadata")).unwrap(),
-            &deploy_hash.value(),
+            &deploy_hash,
             &"bogus_deploy_metadata".to_bytes().unwrap(),
             WriteFlags::empty(),
         )

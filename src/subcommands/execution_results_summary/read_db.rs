@@ -95,7 +95,7 @@ fn get_execution_results_stats(
             // result of each one.
             for deploy_hash in block_body.deploy_and_transfer_hashes() {
                 // Get this deploy's metadata.
-                let metadata_raw = txn.get(deploy_metadata_db, &deploy_hash.value())?;
+                let metadata_raw = txn.get(deploy_metadata_db, &deploy_hash)?;
                 let mut metadata: DeployMetadata =
                     bincode::deserialize(metadata_raw).map_err(|bincode_err| {
                         Error::Parsing(

@@ -3,7 +3,8 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
 use casper_hashing::Digest;
-use casper_types::{DeployHash, PublicKey};
+use casper_node::types::DeployHash;
+use casper_types::PublicKey;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 
