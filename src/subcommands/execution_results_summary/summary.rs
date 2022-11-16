@@ -17,10 +17,8 @@ pub(crate) fn chunk_count_after_partition(data_size: usize) -> usize {
     (data_size + LAST_ELEM_INDEX_IN_CHUNK) / CHUNK_SIZE_BYTES
 }
 
-pub(crate) fn summarize_map(
-    map: &BTreeMap<usize, usize>,
-    elem_count: usize,
-) -> CollectionStatistics {
+pub(crate) fn summarize_map(map: &BTreeMap<usize, usize>) -> CollectionStatistics {
+    let elem_count = map.iter().fold(0, |acc, (_, count)| acc + *count);
     // If we have an even number of elements, we pick the greater of the
     // 2 elements in the middle.
     let median_pos = elem_count / 2;
@@ -58,8 +56,6 @@ pub struct ExecutionResultsStats {
     /// chunks the bytesrepr encoded execution results would be split into,
     /// according to `CHUNK_SIZE_BYTES`).
     pub chunk_count: BTreeMap<usize, usize>,
-    /// Number of execution results inserted into the statistics structure.
-    pub execution_results_insert_counter: usize,
 }
 
 impl ExecutionResultsStats {
@@ -93,8 +89,6 @@ impl ExecutionResultsStats {
         } else {
             self.chunk_count.insert(chunks_in_execution_results, 1);
         }
-        // Increment the insertions counter.
-        self.execution_results_insert_counter += 1;
         Ok(())
     }
 }
@@ -141,12 +135,8 @@ pub(crate) struct ExecutionResultsSummary {
 
 impl From<ExecutionResultsStats> for ExecutionResultsSummary {
     fn from(stats: ExecutionResultsStats) -> Self {
-        let execution_results_size = summarize_map(
-            &stats.execution_results_size,
-            stats.execution_results_insert_counter,
-        );
-        let chunks_statistics =
-            summarize_map(&stats.chunk_count, stats.execution_results_insert_counter);
+        let execution_results_size = summarize_map(&stats.execution_results_size);
+        let chunks_statistics = summarize_map(&stats.chunk_count);
 
         Self {
             execution_results_size,

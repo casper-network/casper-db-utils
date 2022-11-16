@@ -76,31 +76,31 @@ fn check_chunk_count_after_partition() {
 fn check_summarize_map() {
     // Empty map.
     assert_eq!(
-        summarize_map(&BTreeMap::default(), 0),
+        summarize_map(&BTreeMap::default()),
         CollectionStatistics::default()
     );
 
     // 1 element map.
     let mut map = BTreeMap::default();
     map.insert(1, 1);
-    assert_eq!(summarize_map(&map, 1), CollectionStatistics::new(1.0, 1, 1));
+    assert_eq!(summarize_map(&map), CollectionStatistics::new(1.0, 1, 1));
 
     // 2 different elements map.
     let mut map = BTreeMap::default();
     map.insert(1, 1);
     map.insert(2, 1);
-    assert_eq!(summarize_map(&map, 2), CollectionStatistics::new(1.5, 2, 2));
+    assert_eq!(summarize_map(&map), CollectionStatistics::new(1.5, 2, 2));
 
     // 2 identical elements map.
     let mut map = BTreeMap::default();
     map.insert(1, 2);
-    assert_eq!(summarize_map(&map, 2), CollectionStatistics::new(1.0, 1, 1));
+    assert_eq!(summarize_map(&map), CollectionStatistics::new(1.0, 1, 1));
 
     // 3 elements map.
     let mut map = BTreeMap::default();
     map.insert(1, 1);
     map.insert(4, 2);
-    assert_eq!(summarize_map(&map, 3), CollectionStatistics::new(3.0, 4, 4));
+    assert_eq!(summarize_map(&map), CollectionStatistics::new(3.0, 4, 4));
 
     // 10 elements map.
     let mut map = BTreeMap::default();
@@ -108,10 +108,7 @@ fn check_summarize_map() {
     map.insert(3, 2);
     map.insert(4, 4);
     map.insert(8, 2);
-    assert_eq!(
-        summarize_map(&map, 10),
-        CollectionStatistics::new(4.0, 4, 8)
-    );
+    assert_eq!(summarize_map(&map), CollectionStatistics::new(4.0, 4, 8));
 }
 
 #[test]
@@ -139,7 +136,7 @@ fn check_summarize_map_random() {
         }
     }
     assert_eq!(
-        summarize_map(&map, elem_count),
+        summarize_map(&map),
         CollectionStatistics::new(average, median, max)
     );
 }
@@ -147,7 +144,7 @@ fn check_summarize_map_random() {
 #[test]
 fn dump_execution_results_summary() {
     let mut stats = ExecutionResultsStats::default();
-    stats.execution_results_size.insert(1, 1);
+    stats.execution_results_size.insert(1, 2);
     stats.chunk_count.insert(1, 1);
     stats.chunk_count.insert(2, 1);
     let summary: ExecutionResultsSummary = stats.into();
