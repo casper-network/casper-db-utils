@@ -18,7 +18,7 @@ pub(crate) fn chunk_count_after_partition(data_size: usize) -> usize {
 }
 
 pub(crate) fn summarize_map(map: &BTreeMap<usize, usize>) -> CollectionStatistics {
-    let elem_count = map.iter().fold(0, |acc, (_, count)| acc + *count);
+    let elem_count: usize = map.values().sum();
     // If we have an even number of elements, we pick the greater of the
     // 2 elements in the middle.
     let median_pos = elem_count / 2;
