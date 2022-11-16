@@ -34,18 +34,6 @@ impl BlockBody {
     pub(crate) fn deploy_hashes(&self) -> &Vec<DeployHash> {
         &self.deploy_hashes
     }
-
-    /// Retrieves the transfer hashes within the block.
-    pub(crate) fn transfer_hashes(&self) -> &Vec<DeployHash> {
-        &self.transfer_hashes
-    }
-
-    /// Returns deploy hashes of transactions in an order in which they were executed.
-    pub(crate) fn deploy_and_transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> {
-        self.deploy_hashes()
-            .iter()
-            .chain(self.transfer_hashes().iter())
-    }
 }
 
 impl Display for BlockBody {

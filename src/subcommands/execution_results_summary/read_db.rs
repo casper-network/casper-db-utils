@@ -93,7 +93,7 @@ fn get_execution_results_stats(
 
             // Go through all the deploys in this block and get the execution
             // result of each one.
-            for deploy_hash in block_body.deploy_and_transfer_hashes() {
+            for deploy_hash in block_body.deploy_hashes() {
                 // Get this deploy's metadata.
                 let metadata_raw = txn.get(deploy_metadata_db, &deploy_hash)?;
                 let mut metadata: DeployMetadata =
