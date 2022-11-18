@@ -31,12 +31,12 @@ mod tests {
 
     #[test]
     fn db_entry_count() {
-        let fixture = LmdbTestFixture::new(None, None);
+        let fixture = LmdbTestFixture::new(vec![], None);
         let env = &fixture.env;
-        let db = fixture.db;
+        let db = fixture.db(None).unwrap();
 
         if let Ok(txn) = env.begin_ro_txn() {
-            assert_eq!(entry_count(&txn, db).unwrap(), 0);
+            assert_eq!(entry_count(&txn, *db).unwrap(), 0);
             txn.commit().unwrap();
         }
 
@@ -45,7 +45,7 @@ mod tests {
         // Insert the first entry into the database.
         if let Ok(mut txn) = env.begin_rw_txn() {
             txn.put(
-                fixture.db,
+                *db,
                 &first_dummy_input,
                 &first_dummy_input,
                 WriteFlags::empty(),
@@ -55,14 +55,14 @@ mod tests {
         };
 
         if let Ok(txn) = env.begin_ro_txn() {
-            assert_eq!(entry_count(&txn, db).unwrap(), 1);
+            assert_eq!(entry_count(&txn, *db).unwrap(), 1);
             txn.commit().unwrap();
         }
 
         // Insert the second entry into the database.
         if let Ok(mut txn) = env.begin_rw_txn() {
             txn.put(
-                fixture.db,
+                *db,
                 &second_dummy_input,
                 &second_dummy_input,
                 WriteFlags::empty(),
@@ -72,18 +72,18 @@ mod tests {
         };
 
         if let Ok(txn) = env.begin_ro_txn() {
-            assert_eq!(entry_count(&txn, db).unwrap(), 2);
+            assert_eq!(entry_count(&txn, *db).unwrap(), 2);
             txn.commit().unwrap();
         };
 
         // Delete the first entry from the database.
         if let Ok(mut txn) = env.begin_rw_txn() {
-            txn.del(fixture.db, &first_dummy_input, None).unwrap();
+            txn.del(*db, &first_dummy_input, None).unwrap();
             txn.commit().unwrap();
         };
 
         if let Ok(txn) = env.begin_ro_txn() {
-            assert_eq!(entry_count(&txn, db).unwrap(), 1);
+            assert_eq!(entry_count(&txn, *db).unwrap(), 1);
             txn.commit().unwrap();
         };
     }

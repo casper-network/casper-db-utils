@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use std::{fs::OpenOptions, path::PathBuf};
+use std::{collections::HashMap, fs::OpenOptions, path::PathBuf};
 
 use lmdb::{Database as LmdbDatabase, DatabaseFlags, Environment, EnvironmentFlags};
 use serde::{Deserialize, Serialize};
@@ -12,13 +12,13 @@ use casper_types::{EraId, ProtocolVersion};
 
 pub struct LmdbTestFixture {
     pub env: Environment,
-    pub db: LmdbDatabase,
+    pub dbs: HashMap<&'static str, LmdbDatabase>,
     pub tmp_dir: TempDir,
     pub file_path: PathBuf,
 }
 
 impl LmdbTestFixture {
-    pub fn new(name: Option<&str>, file_name: Option<&str>) -> Self {
+    pub fn new(names: Vec<&'static str>, file_name: Option<&str>) -> Self {
         let tmp_dir = tempfile::tempdir().unwrap();
         let file_path = if let Some(name) = file_name {
             let path = tmp_dir.as_ref().join(name);
@@ -48,18 +48,38 @@ impl LmdbTestFixture {
                     | EnvironmentFlags::NO_READAHEAD,
             )
             .set_max_readers(12)
-            .set_map_size(4096 * 10)
+            .set_map_size(4096 * 1024)
             .set_max_dbs(10)
             .open(&file_path)
             .expect("can't create environment");
-        let db = env
-            .create_db(name, DatabaseFlags::empty())
-            .expect("can't create database");
+        let mut dbs = HashMap::new();
+        if names.is_empty() {
+            let db = env
+                .create_db(None, DatabaseFlags::empty())
+                .expect("can't create database");
+            dbs.insert("default", db);
+        } else {
+            for name in names {
+                let db = env
+                    .create_db(Some(name), DatabaseFlags::empty())
+                    .expect("can't create database");
+                dbs.insert(name, db);
+            }
+        }
+
         LmdbTestFixture {
             env,
-            db,
+            dbs,
             tmp_dir,
             file_path,
+        }
+    }
+
+    pub fn db(&self, maybe_name: Option<&str>) -> Option<&LmdbDatabase> {
+        if let Some(name) = maybe_name {
+            self.dbs.get(name)
+        } else {
+            self.dbs.get("default")
         }
     }
 }

@@ -97,7 +97,7 @@ fn archive_unpack_decode_network() {
 
     let src_dir = tempfile::tempdir().unwrap();
     let file_payload_path = src_dir.path().join(TEST_FILE);
-    fs::write(&file_payload_path, &payload).unwrap();
+    fs::write(&file_payload_path, payload).unwrap();
     let archive_path = src_dir.path().join(TEST_ARCHIVE);
     {
         let archive_file = File::create(&archive_path).unwrap();
@@ -155,7 +155,7 @@ fn archive_unpack_decode_file() {
 
     let src_dir = tempfile::tempdir().unwrap();
     let file_payload_path = src_dir.path().join(TEST_FILE);
-    fs::write(&file_payload_path, &payload).unwrap();
+    fs::write(&file_payload_path, payload).unwrap();
     let archive_path = src_dir.path().join(TEST_ARCHIVE);
     {
         let archive_file = File::create(&archive_path).unwrap();

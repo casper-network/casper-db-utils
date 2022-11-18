@@ -9,13 +9,16 @@ use std::{fs::OpenOptions, process};
 use clap::{crate_description, crate_version, Arg, Command};
 use log::error;
 
-use subcommands::{archive, check, latest_block_summary, trie_compact, unsparse, Error};
+use subcommands::{
+    archive, check, execution_results_summary, latest_block_summary, trie_compact, unsparse, Error,
+};
 
 const LOGGING: &str = "logging";
 
 enum DisplayOrder {
     Archive,
     Check,
+    ExecutionResults,
     LatestBlock,
     TrieCompact,
     Unsparse,
@@ -28,6 +31,9 @@ fn cli() -> Command<'static> {
         .arg_required_else_help(true)
         .subcommand(archive::command(DisplayOrder::Archive as usize))
         .subcommand(check::command(DisplayOrder::Check as usize))
+        .subcommand(execution_results_summary::command(
+            DisplayOrder::ExecutionResults as usize,
+        ))
         .subcommand(latest_block_summary::command(
             DisplayOrder::LatestBlock as usize,
         ))
@@ -71,6 +77,9 @@ fn main() {
     let result: Result<(), Error> = match subcommand_name {
         archive::COMMAND_NAME => archive::run(matches).map_err(Error::from),
         check::COMMAND_NAME => check::run(matches).map_err(Error::from),
+        execution_results_summary::COMMAND_NAME => {
+            execution_results_summary::run(matches).map_err(Error::from)
+        }
         latest_block_summary::COMMAND_NAME => {
             latest_block_summary::run(matches).map_err(Error::from)
         }

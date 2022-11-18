@@ -141,8 +141,8 @@ fn sanity_check_ser_deser() {
 
 #[test]
 fn good_db_should_pass_check() {
-    let fixture = LmdbTestFixture::new(Some(MockDb::db_name()), None);
-    populate_db(&fixture.env, &fixture.db);
+    let fixture = LmdbTestFixture::new(vec![MockDb::db_name()], None);
+    populate_db(&fixture.env, fixture.db(Some(MockDb::db_name())).unwrap());
 
     assert!(MockDb::check_db(&fixture.env, true, 0).is_ok());
     assert!(MockDb::check_db(&fixture.env, false, 0).is_ok());
@@ -152,8 +152,8 @@ fn good_db_should_pass_check() {
 
 #[test]
 fn bad_db_should_fail_check() {
-    let fixture = LmdbTestFixture::new(Some(MockDb::db_name()), None);
-    populate_faulty_db(&fixture.env, &fixture.db);
+    let fixture = LmdbTestFixture::new(vec![MockDb::db_name()], None);
+    populate_faulty_db(&fixture.env, fixture.db(Some(MockDb::db_name())).unwrap());
 
     assert!(MockDb::check_db(&fixture.env, true, 0).is_err());
     assert!(MockDb::check_db(&fixture.env, false, 0).is_err());

@@ -83,7 +83,7 @@ fn dump_without_net_name() {
 
 #[test]
 fn latest_block_should_succeed() {
-    let fixture = LmdbTestFixture::new(Some("block_header"), Some(STORAGE_FILE_NAME));
+    let fixture = LmdbTestFixture::new(vec!["block_header"], Some(STORAGE_FILE_NAME));
     let out_file_path = OUT_DIR.as_ref().join("latest_block_metadata.json");
 
     // Create 2 block headers, height 0 and 1.
@@ -95,17 +95,18 @@ fn latest_block_should_succeed() {
     second_block.height = 1;
 
     let env = &fixture.env;
+    let db = fixture.db(Some("block_header")).unwrap();
     // Insert the 2 blocks into the database.
     if let Ok(mut txn) = env.begin_rw_txn() {
         txn.put(
-            fixture.db,
+            *db,
             &first_block_key,
             &bincode::serialize(&first_block).unwrap(),
             WriteFlags::empty(),
         )
         .unwrap();
         txn.put(
-            fixture.db,
+            *db,
             &second_block_key,
             &bincode::serialize(&second_block).unwrap(),
             WriteFlags::empty(),
@@ -128,7 +129,7 @@ fn latest_block_should_succeed() {
 
     // Delete the second block from the database.
     if let Ok(mut txn) = env.begin_rw_txn() {
-        txn.del(fixture.db, &second_block_key, None).unwrap();
+        txn.del(*db, &second_block_key, None).unwrap();
         txn.commit().unwrap();
     };
 
@@ -155,7 +156,7 @@ fn latest_block_should_succeed() {
 
 #[test]
 fn latest_block_empty_db_should_fail() {
-    let fixture = LmdbTestFixture::new(Some("block_header_faulty"), Some(STORAGE_FILE_NAME));
+    let fixture = LmdbTestFixture::new(vec!["block_header_faulty"], Some(STORAGE_FILE_NAME));
     let out_file_path = OUT_DIR.as_ref().join("empty.json");
     assert!(read_db::latest_block_summary(
         fixture.tmp_dir.as_ref(),
@@ -167,7 +168,7 @@ fn latest_block_empty_db_should_fail() {
 
 #[test]
 fn latest_block_existing_output_should_fail() {
-    let fixture = LmdbTestFixture::new(Some("block_header_faulty"), Some(STORAGE_FILE_NAME));
+    let fixture = LmdbTestFixture::new(vec!["block_header_faulty"], Some(STORAGE_FILE_NAME));
     let out_file_path = OUT_DIR.as_ref().join("existing.json");
     let _ = OpenOptions::new()
         .create_new(true)
