@@ -1,4 +1,4 @@
-mod block_body;
+pub(crate) mod block_body;
 mod read_db;
 mod summary;
 #[cfg(test)]

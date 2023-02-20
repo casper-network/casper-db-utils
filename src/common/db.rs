@@ -40,6 +40,7 @@ use thiserror::Error;
 use casper_types::bytesrepr::Error as BytesreprError;
 
 pub const STORAGE_FILE_NAME: &str = "storage.lmdb";
+pub const TRIE_STORE_FILE_NAME: &str = "data.lmdb";
 const ENTRY_LOG_INTERVAL: usize = 100_000;
 const MAX_DB_READERS: u32 = 100;
 

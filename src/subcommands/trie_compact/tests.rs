@@ -16,14 +16,16 @@ use casper_types::bytesrepr::{Bytes, ToBytes};
 
 static DEFAULT_MAX_DB_SIZE: Lazy<usize> = Lazy::new(|| super::DEFAULT_MAX_DB_SIZE.parse().unwrap());
 
+use crate::common::db::TRIE_STORE_FILE_NAME;
+
 use super::{
-    compact::{self, DestinationOptions, TRIE_STORE_FILE_NAME},
+    compact::{self, DestinationOptions},
     utils::{create_execution_engine, create_storage, load_execution_engine},
     Error,
 };
 
 #[derive(Clone, Debug, PartialEq)]
-struct TestData<K, V>(Digest, Trie<K, V>);
+pub(crate) struct TestData<K, V>(pub(crate) Digest, pub(crate) Trie<K, V>);
 
 impl<'a, K, V> From<&'a TestData<K, V>> for (&'a Digest, &'a Trie<K, V>) {
     fn from(test_data: &'a TestData<K, V>) -> Self {
@@ -32,7 +34,7 @@ impl<'a, K, V> From<&'a TestData<K, V>> for (&'a Digest, &'a Trie<K, V>) {
 }
 
 // Copied from `execution_engine::storage::trie_store::tests::create_data`
-fn create_data() -> Vec<TestData<Bytes, Bytes>> {
+pub(crate) fn create_data() -> Vec<TestData<Bytes, Bytes>> {
     let leaf_1 = Trie::Leaf {
         key: Bytes::from(vec![0u8, 0, 0]),
         value: Bytes::from(b"val_1".to_vec()),
