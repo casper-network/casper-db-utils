@@ -356,7 +356,7 @@ fn execution_results_summary_invalid_key_should_fail() {
         false,
     ) {
         Err(Error::InvalidKey(idx)) => assert_eq!(idx, 0),
-        Err(error) => panic!("Got unexpected error: {:?}", error),
+        Err(error) => panic!("Got unexpected error: {error:?}"),
         Ok(_) => panic!("Command unexpectedly succeeded"),
     }
 }
@@ -411,7 +411,7 @@ fn execution_results_summary_parsing_should_fail() {
             assert_eq!(hash, block_hash);
             assert_eq!(db_name, DeployMetadataDatabase::db_name());
         }
-        Err(error) => panic!("Got unexpected error: {:?}", error),
+        Err(error) => panic!("Got unexpected error: {error:?}"),
         Ok(_) => panic!("Command unexpectedly succeeded"),
     }
 }
@@ -427,7 +427,7 @@ fn execution_results_summary_bogus_db_should_fail() {
         false,
     ) {
         Err(Error::Database(_)) => { /* expected result */ }
-        Err(error) => panic!("Got unexpected error: {:?}", error),
+        Err(error) => panic!("Got unexpected error: {error:?}"),
         Ok(_) => panic!("Command unexpectedly succeeded"),
     }
 }
@@ -450,7 +450,7 @@ fn execution_results_summary_existing_output_should_fail() {
         false,
     ) {
         Err(Error::Output(_)) => { /* expected result */ }
-        Err(error) => panic!("Got unexpected error: {:?}", error),
+        Err(error) => panic!("Got unexpected error: {error:?}"),
         Ok(_) => panic!("Command unexpectedly succeeded"),
     }
 }

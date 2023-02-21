@@ -72,12 +72,12 @@ pub enum Error {
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatterResult {
         match self {
-            Self::Database(e) => write!(f, "Error operating the database: {}", e),
-            Self::Parsing(idx, inner) => write!(f, "Error parsing element {}: {}", idx, inner),
+            Self::Database(e) => write!(f, "Error operating the database: {e}"),
+            Self::Parsing(idx, inner) => write!(f, "Error parsing element {idx}: {inner}"),
             Self::Accumulated(accumulated_errors) => {
                 writeln!(f, "Errors caught:")?;
                 for error in accumulated_errors {
-                    writeln!(f, "{}", error)?;
+                    writeln!(f, "{error}")?;
                 }
                 Ok(())
             }

@@ -136,7 +136,7 @@ pub fn run(matches: &ArgMatches) -> Result<(), Error> {
             matches
                 .value_of(FILE)
                 .map(|path| Input::File(path.into()))
-                .unwrap_or_else(|| panic!("Should have one of {} or {}", FILE, URL))
+                .unwrap_or_else(|| panic!("Should have one of {FILE} or {URL}"))
         });
     let dest = matches.value_of(OUTPUT).unwrap();
     unpack(input, dest)

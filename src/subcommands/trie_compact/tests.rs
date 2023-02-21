@@ -48,9 +48,9 @@ pub(crate) fn create_data() -> Vec<TestData<Bytes, Bytes>> {
         value: Bytes::from(b"val_3".to_vec()),
     };
 
-    let leaf_1_hash = Digest::hash(&leaf_1.to_bytes().unwrap());
-    let leaf_2_hash = Digest::hash(&leaf_2.to_bytes().unwrap());
-    let leaf_3_hash = Digest::hash(&leaf_3.to_bytes().unwrap());
+    let leaf_1_hash = Digest::hash(leaf_1.to_bytes().unwrap());
+    let leaf_2_hash = Digest::hash(leaf_2.to_bytes().unwrap());
+    let leaf_3_hash = Digest::hash(leaf_3.to_bytes().unwrap());
 
     let node_2: Trie<Bytes, Bytes> = {
         let mut pointer_block = PointerBlock::new();
@@ -60,7 +60,7 @@ pub(crate) fn create_data() -> Vec<TestData<Bytes, Bytes>> {
         Trie::Node { pointer_block }
     };
 
-    let node_2_hash = Digest::hash(&node_2.to_bytes().unwrap());
+    let node_2_hash = Digest::hash(node_2.to_bytes().unwrap());
 
     let ext_node: Trie<Bytes, Bytes> = {
         let affix = vec![1u8, 0];
@@ -71,7 +71,7 @@ pub(crate) fn create_data() -> Vec<TestData<Bytes, Bytes>> {
         }
     };
 
-    let ext_node_hash = Digest::hash(&ext_node.to_bytes().unwrap());
+    let ext_node_hash = Digest::hash(ext_node.to_bytes().unwrap());
 
     let node_1: Trie<Bytes, Bytes> = {
         let mut pointer_block = PointerBlock::new();
@@ -81,7 +81,7 @@ pub(crate) fn create_data() -> Vec<TestData<Bytes, Bytes>> {
         Trie::Node { pointer_block }
     };
 
-    let node_1_hash = Digest::hash(&node_1.to_bytes().unwrap());
+    let node_1_hash = Digest::hash(node_1.to_bytes().unwrap());
 
     vec![
         TestData(leaf_1_hash, leaf_1),
@@ -259,7 +259,7 @@ fn missing_source_trie() {
         *DEFAULT_MAX_DB_SIZE,
     ) {
         Err(Error::InvalidPath(..)) => {}
-        Err(err) => panic!("Unexpected error: {}", err),
+        Err(err) => panic!("Unexpected error: {err}"),
         Ok(_) => panic!("Unexpected successful trie compact"),
     }
 }
@@ -276,7 +276,7 @@ fn missing_storage() {
         *DEFAULT_MAX_DB_SIZE,
     ) {
         Err(Error::OpenStorage(_)) => {}
-        Err(err) => panic!("Unexpected error: {}", err),
+        Err(err) => panic!("Unexpected error: {err}"),
         Ok(_) => panic!("Unexpected successful trie compact"),
     }
 }
@@ -294,7 +294,7 @@ fn valid_empty_dst_with_destination_options() {
         *DEFAULT_MAX_DB_SIZE,
     ) {
         Ok(_) => {}
-        Err(err) => panic!("Unexpected error: {}", err),
+        Err(err) => panic!("Unexpected error: {err}"),
     }
     fs::remove_file(dst_dir.path().join(TRIE_STORE_FILE_NAME)).unwrap();
 
@@ -306,7 +306,7 @@ fn valid_empty_dst_with_destination_options() {
         *DEFAULT_MAX_DB_SIZE,
     ) {
         Err(Error::InvalidDest(_)) => {}
-        Err(err) => panic!("Unexpected error: {}", err),
+        Err(err) => panic!("Unexpected error: {err}"),
         Ok(_) => panic!("Unexpected successful trie compact"),
     }
 
@@ -318,7 +318,7 @@ fn valid_empty_dst_with_destination_options() {
         *DEFAULT_MAX_DB_SIZE,
     ) {
         Err(Error::InvalidDest(_)) => {}
-        Err(err) => panic!("Unexpected error: {}", err),
+        Err(err) => panic!("Unexpected error: {err}"),
         Ok(_) => panic!("Unexpected successful trie compact"),
     }
 }
@@ -341,7 +341,7 @@ fn valid_existing_dst_with_destination_options() {
         *DEFAULT_MAX_DB_SIZE,
     ) {
         Err(Error::InvalidDest(_)) => {}
-        Err(err) => panic!("Unexpected error: {}", err),
+        Err(err) => panic!("Unexpected error: {err}"),
         Ok(_) => panic!("Unexpected successful trie compact"),
     }
 
@@ -353,7 +353,7 @@ fn valid_existing_dst_with_destination_options() {
         *DEFAULT_MAX_DB_SIZE,
     ) {
         Ok(_) => {}
-        Err(err) => panic!("Unexpected error: {}", err),
+        Err(err) => panic!("Unexpected error: {err}"),
     }
 
     assert!(dst_dir.path().join(TRIE_STORE_FILE_NAME).exists());
@@ -365,7 +365,7 @@ fn valid_existing_dst_with_destination_options() {
         *DEFAULT_MAX_DB_SIZE,
     ) {
         Ok(_) => {}
-        Err(err) => panic!("Unexpected error: {}", err),
+        Err(err) => panic!("Unexpected error: {err}"),
     }
 
     fs::remove_file(dst_dir.path().join(TRIE_STORE_FILE_NAME))
@@ -386,7 +386,7 @@ fn missing_dst_with_destination_options() {
         *DEFAULT_MAX_DB_SIZE,
     ) {
         Ok(_) => {}
-        Err(err) => panic!("Unexpected error: {}", err),
+        Err(err) => panic!("Unexpected error: {err}"),
     }
     fs::remove_dir_all(dst_dir.as_path()).unwrap();
 
@@ -398,7 +398,7 @@ fn missing_dst_with_destination_options() {
         *DEFAULT_MAX_DB_SIZE,
     ) {
         Err(Error::InvalidDest(_)) => {}
-        Err(err) => panic!("Unexpected error: {}", err),
+        Err(err) => panic!("Unexpected error: {err}"),
         Ok(_) => panic!("Unexpected successful trie compact"),
     }
 
@@ -410,7 +410,7 @@ fn missing_dst_with_destination_options() {
         *DEFAULT_MAX_DB_SIZE,
     ) {
         Err(Error::InvalidDest(_)) => {}
-        Err(err) => panic!("Unexpected error: {}", err),
+        Err(err) => panic!("Unexpected error: {err}"),
         Ok(_) => panic!("Unexpected successful trie compact"),
     }
 }

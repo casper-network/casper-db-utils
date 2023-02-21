@@ -91,8 +91,7 @@ fn validate_trie_paths<P1: AsRef<Path>, P2: AsRef<Path>>(
                         .open(destination_trie_path.as_ref().join(TRIE_STORE_FILE_NAME))
                         .map_err(|io_err| {
                             Error::InvalidDest(format!(
-                                "Couldn't overwrite destination file: {}",
-                                io_err
+                                "Couldn't overwrite destination file: {io_err}"
                             ))
                         })?;
                 } else {
