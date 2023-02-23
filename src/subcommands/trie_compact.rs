@@ -143,7 +143,7 @@ pub fn command(display_order: usize) -> Command<'static> {
                 .short('m')
                 .long(MAX_DB_SIZE)
                 .takes_value(true)
-                .default_value(MAX_DB_SIZE)
+                .default_value(DEFAULT_MAX_DB_SIZE)
                 .value_name("MAX_DB_SIZE")
                 .help("Maximum size the DB files are allowed to be, in bytes."),
         )
