@@ -18,8 +18,6 @@ pub(crate) fn transfer_global_state<P1: AsRef<Path>, P2: AsRef<Path>>(
     let max_db_size = DEFAULT_MAX_DB_SIZE
         .parse()
         .expect("should be able to parse max db size");
-    // let source_path = source.as_ref().join(TRIE_STORE_FILE_NAME);
-    // let destination_path = destination.as_ref().join(TRIE_STORE_FILE_NAME);
 
     // Load the source trie store.
     let (source_state, _env) = load_execution_engine(source, max_db_size, Digest::default(), true)
