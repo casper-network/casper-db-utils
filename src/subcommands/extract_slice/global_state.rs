@@ -1,6 +1,7 @@
 use std::{path::Path, result::Result};
 
 use casper_hashing::Digest;
+use log::info;
 
 use crate::subcommands::trie_compact::{
     copy_state_root, create_execution_engine, load_execution_engine, DEFAULT_MAX_DB_SIZE,
@@ -25,6 +26,7 @@ pub(crate) fn transfer_global_state<P1: AsRef<Path>, P2: AsRef<Path>>(
     // Create the destination trie store.
     let (destination_state, _env) = create_execution_engine(destination, max_db_size, true)
         .map_err(Error::CreateExecutionEngine)?;
+    info!("Starting transfer process for state root hash {state_root_hash}");
     // Copy the state root along with missing descendants over to the new trie
     // store.
     copy_state_root(state_root_hash, &source_state, &destination_state)

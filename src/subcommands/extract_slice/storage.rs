@@ -4,6 +4,7 @@ use casper_hashing::Digest;
 use lmdb::{DatabaseFlags, Error as LmdbError, Transaction};
 
 use casper_node::types::{BlockHash, BlockHeader, DeployMetadata};
+use log::info;
 
 use crate::{
     common::db::{
@@ -53,6 +54,12 @@ pub(crate) fn transfer_block_info<P1: AsRef<Path>, P2: AsRef<Path>>(
     let mut source_txn = source_env.begin_ro_txn()?;
     let mut destination_txn = destination_env.begin_rw_txn()?;
 
+    info!(
+        "Initiating block information transfer from {} to {} for block {block_hash}",
+        source_path.to_string_lossy(),
+        destination_path.to_string_lossy()
+    );
+
     // Read the block header associated with the given block hash.
     let block_header_bytes = db_helpers::transfer_to_new_db(
         &mut source_txn,
@@ -60,6 +67,7 @@ pub(crate) fn transfer_block_info<P1: AsRef<Path>, P2: AsRef<Path>>(
         BlockHeaderDatabase::db_name(),
         &block_hash,
     )?;
+    info!("Successfully transferred block header");
     let block_header: BlockHeader = bincode::deserialize(&block_header_bytes)?;
 
     // Read the block body associated with the previously read block header.
@@ -69,6 +77,7 @@ pub(crate) fn transfer_block_info<P1: AsRef<Path>, P2: AsRef<Path>>(
         BlockBodyDatabase::db_name(),
         block_header.body_hash(),
     )?;
+    info!("Successfully transferred block body");
     let block_body: BlockBody = bincode::deserialize(&block_body_bytes)?;
 
     // Attempt to copy over all entries in the transfer database for the given
@@ -79,7 +88,8 @@ pub(crate) fn transfer_block_info<P1: AsRef<Path>, P2: AsRef<Path>>(
         TransferDatabase::db_name(),
         &block_hash,
     ) {
-        Ok(_) | Err(LmdbError::NotFound) => {}
+        Ok(_) => info!("Found transfers in the source DB and successfully transferred them"),
+        Err(LmdbError::NotFound) => info!("No transfers found in the source DB"),
         Err(lmdb_error) => return Err(Error::Database(lmdb_error)),
     }
 
@@ -95,6 +105,7 @@ pub(crate) fn transfer_block_info<P1: AsRef<Path>, P2: AsRef<Path>>(
             DeployDatabase::db_name(),
             deploy_hash,
         )?;
+        info!("Successfully transferred deploy {deploy_hash}");
 
         // Get this deploy's metadata.
         let metadata_raw = source_txn.get(deploy_metadata_db, &deploy_hash)?;
@@ -121,10 +132,12 @@ pub(crate) fn transfer_block_info<P1: AsRef<Path>, P2: AsRef<Path>>(
                 deploy_hash,
                 &serialized_new_metadata,
             )?;
+            info!("Successfully transferred execution results for {deploy_hash}");
         }
     }
     // Commit the transactions.
     source_txn.commit()?;
     destination_txn.commit()?;
+    info!("Storage transfer complete");
     Ok(*block_header.state_root_hash())
 }
