@@ -82,7 +82,7 @@ pub fn command(display_order: usize) -> Command<'static> {
             Arg::new(BLOCK_HASH)
                 .display_order(DisplayOrder::BlockHash as usize)
                 .short('b')
-                .long(OUTPUT)
+                .long(BLOCK_HASH)
                 .takes_value(true)
                 .value_name("BLOCK_HASH")
                 .help("Hash of the block which defines the slice."),
