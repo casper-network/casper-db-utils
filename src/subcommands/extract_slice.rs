@@ -16,6 +16,7 @@ use thiserror::Error as ThisError;
 
 pub const COMMAND_NAME: &str = "extract-slice";
 const BLOCK_HASH: &str = "block-hash";
+const STATE_ROOT_HASH: &str = "state-root-hash";
 const OUTPUT: &str = "output";
 const SOURCE_DB_PATH: &str = "source-db-path";
 
@@ -87,6 +88,15 @@ pub fn command(display_order: usize) -> Command<'static> {
                 .value_name("BLOCK_HASH")
                 .help("Hash of the block which defines the slice."),
         )
+        .arg(
+            Arg::new(STATE_ROOT_HASH)
+                .display_order(DisplayOrder::BlockHash as usize)
+                .short('s')
+                .long(OUTPUT)
+                .takes_value(true)
+                .value_name("STATE_ROOT_HASH")
+                .help("State root hash."),
+        )
 }
 
 pub fn run(matches: &ArgMatches) -> Result<(), Error> {
@@ -96,11 +106,20 @@ pub fn run(matches: &ArgMatches) -> Result<(), Error> {
             .expect("should have db-path arg"),
     );
     let output = Path::new(matches.value_of(OUTPUT).expect("should have output arg"));
-    let block_hash_string = matches
-        .value_of(BLOCK_HASH)
-        .expect("should have block-hash arg");
-    let block_hash: BlockHash = Digest::from_hex(block_hash_string)
-        .expect("should parse block hash to hex format")
-        .into();
-    extract::extract_slice(path, output, block_hash)
+    match (
+        matches.value_of(BLOCK_HASH),
+        matches.value_of(STATE_ROOT_HASH),
+    ) {
+        (Some(block_hash), None) => {
+            let block_hash: BlockHash = Digest::from_hex(block_hash)
+                .expect("should parse block hash to hex format")
+                .into();
+            extract::extract_slice(path, output, block_hash)
+        }
+        (None, Some(state_root_hash)) => {
+            let state_root_hash = Digest::from_hex(state_root_hash).unwrap();
+            extract::extract_slice_with_root(path, output, state_root_hash)
+        }
+        _ => panic!("nope"),
+    }
 }
