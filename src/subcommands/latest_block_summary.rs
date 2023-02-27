@@ -3,9 +3,10 @@ mod read_db;
 #[cfg(test)]
 mod tests;
 
-use std::{io::Error as IoError, path::Path};
+use std::{array::TryFromSliceError, io::Error as IoError, path::Path};
 
 use bincode::Error as BincodeError;
+use casper_node::types::BlockHash;
 use clap::{Arg, ArgMatches, Command};
 use lmdb::Error as LmdbError;
 use serde_json::Error as SerializationError;
@@ -31,6 +32,14 @@ pub enum Error {
     Serialize(#[from] SerializationError),
     #[error("Error writing output: {0}")]
     Output(#[from] IoError),
+    #[error("Invalid block hash {err:?} {val}")]
+    InvalidBlockHash { err: TryFromSliceError, val: String },
+
+    #[error("Found block info that does not hash to expected value {expected_block_hash} {actual_block_hash}")]
+    BlockHashDoesntMatch {
+        expected_block_hash: BlockHash,
+        actual_block_hash: BlockHash,
+    },
 }
 
 enum DisplayOrder {

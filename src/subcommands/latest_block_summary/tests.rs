@@ -47,7 +47,7 @@ fn parse_network_name_input() {
 fn dump_with_net_name() {
     let json_header = JsonBlockHeader::doc_example().clone();
     let header: BlockHeader = json_header.into();
-    let block_info = BlockInfo::new(Some("casper".to_string()), header);
+    let block_info = BlockInfo::new(Some("casper".to_string()), header.hash(), header);
     let reference_json = serde_json::to_string_pretty(&block_info).unwrap();
 
     let out_file_path = OUT_DIR.as_ref().join("casper_network.json");
@@ -66,7 +66,7 @@ fn dump_with_net_name() {
 fn dump_without_net_name() {
     let json_header = JsonBlockHeader::doc_example().clone();
     let header: BlockHeader = json_header.into();
-    let block_info = BlockInfo::new(None, header);
+    let block_info = BlockInfo::new(None, header.hash(), header);
     let reference_json = serde_json::to_string_pretty(&block_info).unwrap();
 
     let out_file_path = OUT_DIR.as_ref().join("no_net_name.json");
