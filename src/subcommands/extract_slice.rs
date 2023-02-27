@@ -14,8 +14,11 @@ use clap::{Arg, ArgMatches, Command};
 use lmdb::Error as LmdbError;
 use thiserror::Error as ThisError;
 
+use self::extract::SliceIdentifier;
+
 pub const COMMAND_NAME: &str = "extract-slice";
 const BLOCK_HASH: &str = "block-hash";
+const STATE_ROOT_HASH: &str = "state-root-hash";
 const OUTPUT: &str = "output";
 const SOURCE_DB_PATH: &str = "source-db-path";
 
@@ -42,6 +45,7 @@ enum DisplayOrder {
     SourceDbPath,
     Output,
     BlockHash,
+    StateRootHash,
 }
 
 pub fn command(display_order: usize) -> Command<'static> {
@@ -50,7 +54,10 @@ pub fn command(display_order: usize) -> Command<'static> {
         .about(
             "Reads all data for a given block hash (block, deploys, execution \
                 results, global state) from a storage directory and stores \
-                them to a new directory in two LMDB files",
+                them to a new directory in two LMDB files. If a state root \
+                hash is provided instead of a block hash, only the global \
+                state under that root hash will be stored in the new \
+                directory",
         )
         .arg(
             Arg::new(SOURCE_DB_PATH)
@@ -85,7 +92,17 @@ pub fn command(display_order: usize) -> Command<'static> {
                 .long(BLOCK_HASH)
                 .takes_value(true)
                 .value_name("BLOCK_HASH")
+                .conflicts_with(STATE_ROOT_HASH)
                 .help("Hash of the block which defines the slice."),
+        )
+        .arg(
+            Arg::new(STATE_ROOT_HASH)
+                .display_order(DisplayOrder::StateRootHash as usize)
+                .short('s')
+                .long(STATE_ROOT_HASH)
+                .takes_value(true)
+                .value_name("STATE_ROOT_HASH")
+                .help("State root hash to be copied over to the new database."),
         )
 }
 
@@ -96,11 +113,24 @@ pub fn run(matches: &ArgMatches) -> Result<(), Error> {
             .expect("should have db-path arg"),
     );
     let output = Path::new(matches.value_of(OUTPUT).expect("should have output arg"));
-    let block_hash_string = matches
+    let slice_identifier = matches
         .value_of(BLOCK_HASH)
-        .expect("should have block-hash arg");
-    let block_hash: BlockHash = Digest::from_hex(block_hash_string)
-        .expect("should parse block hash to hex format")
-        .into();
-    extract::extract_slice(path, output, block_hash)
+        .map(|block_hash_str| {
+            let block_hash: BlockHash = Digest::from_hex(block_hash_str)
+                .expect("should parse block hash to hex format")
+                .into();
+            SliceIdentifier::BlockHash(block_hash)
+        })
+        .unwrap_or_else(|| {
+            matches
+                .value_of(STATE_ROOT_HASH)
+                .map(|state_root_hash_str| {
+                    let state_root_hash = Digest::from_hex(state_root_hash_str)
+                        .expect("should parse state root hash to hex format");
+                    SliceIdentifier::StateRootHash(state_root_hash)
+                })
+                .expect("should have either BLOCK_HASH or STATE_ROOT_HASH arg")
+        });
+
+    extract::extract_slice(path, output, slice_identifier)
 }
