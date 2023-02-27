@@ -1,7 +1,7 @@
 mod compact;
 mod helpers;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 // All code in the `utils` mod was copied from `casper-node` because it isn't available in the
 // public interface.
 mod utils;
@@ -17,13 +17,15 @@ use casper_hashing::Digest;
 use casper_node::storage::Error as StorageError;
 
 use compact::DestinationOptions;
+pub use helpers::copy_state_root;
+pub use utils::{create_execution_engine, load_execution_engine};
 
 pub const COMMAND_NAME: &str = "compact-trie";
 const APPEND: &str = "append";
 const DESTINATION_TRIE_STORE_PATH: &str = "dest-trie";
 const OVERWRITE: &str = "overwrite";
 const MAX_DB_SIZE: &str = "max-db-size";
-const DEFAULT_MAX_DB_SIZE: &str = "483183820800"; // 450 gb
+pub const DEFAULT_MAX_DB_SIZE: &str = "483183820800"; // 450 gb
 const SOURCE_TRIE_STORE_PATH: &str = "src-trie";
 const STORAGE_PATH: &str = "storage-path";
 

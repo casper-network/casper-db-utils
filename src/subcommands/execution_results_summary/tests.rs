@@ -4,9 +4,8 @@ use std::{
     slice,
 };
 
-use casper_hashing::Digest;
-use casper_node::types::{BlockHash, DeployHash, DeployMetadata};
-use casper_types::{bytesrepr::ToBytes, ExecutionEffect, ExecutionResult};
+use casper_node::types::{BlockHash, DeployHash};
+use casper_types::bytesrepr::ToBytes;
 use lmdb::{Transaction, WriteFlags};
 use once_cell::sync::Lazy;
 use rand::Rng;
@@ -23,40 +22,13 @@ use crate::{
         },
         Error,
     },
-    test_utils::{LmdbTestFixture, MockBlockHeader},
+    test_utils::{
+        mock_block_header, mock_deploy_hash, mock_deploy_metadata, success_execution_result,
+        LmdbTestFixture, MockBlockHeader,
+    },
 };
 
 static OUT_DIR: Lazy<TempDir> = Lazy::new(|| tempfile::tempdir().unwrap());
-
-fn mock_deploy_hash(idx: u8) -> DeployHash {
-    DeployHash::new([idx; 32].into())
-}
-
-fn mock_block_header(idx: u8) -> (BlockHash, MockBlockHeader) {
-    let mut block_header = MockBlockHeader::default();
-    let block_hash_digest: Digest = [idx; Digest::LENGTH].into();
-    let block_hash: BlockHash = block_hash_digest.into();
-    block_header.body_hash = [idx; Digest::LENGTH].into();
-    (block_hash, block_header)
-}
-
-fn mock_deploy_metadata(block_hashes: &[BlockHash]) -> DeployMetadata {
-    let mut deploy_metadata = DeployMetadata::default();
-    for block_hash in block_hashes {
-        deploy_metadata
-            .execution_results
-            .insert(*block_hash, success_execution_result());
-    }
-    deploy_metadata
-}
-
-fn success_execution_result() -> ExecutionResult {
-    ExecutionResult::Success {
-        effect: ExecutionEffect::default(),
-        transfers: vec![],
-        cost: 100.into(),
-    }
-}
 
 #[test]
 fn check_chunk_count_after_partition() {
@@ -384,7 +356,7 @@ fn execution_results_summary_invalid_key_should_fail() {
         false,
     ) {
         Err(Error::InvalidKey(idx)) => assert_eq!(idx, 0),
-        Err(error) => panic!("Got unexpected error: {:?}", error),
+        Err(error) => panic!("Got unexpected error: {error:?}"),
         Ok(_) => panic!("Command unexpectedly succeeded"),
     }
 }
@@ -439,7 +411,7 @@ fn execution_results_summary_parsing_should_fail() {
             assert_eq!(hash, block_hash);
             assert_eq!(db_name, DeployMetadataDatabase::db_name());
         }
-        Err(error) => panic!("Got unexpected error: {:?}", error),
+        Err(error) => panic!("Got unexpected error: {error:?}"),
         Ok(_) => panic!("Command unexpectedly succeeded"),
     }
 }
@@ -455,7 +427,7 @@ fn execution_results_summary_bogus_db_should_fail() {
         false,
     ) {
         Err(Error::Database(_)) => { /* expected result */ }
-        Err(error) => panic!("Got unexpected error: {:?}", error),
+        Err(error) => panic!("Got unexpected error: {error:?}"),
         Ok(_) => panic!("Command unexpectedly succeeded"),
     }
 }
@@ -478,7 +450,7 @@ fn execution_results_summary_existing_output_should_fail() {
         false,
     ) {
         Err(Error::Output(_)) => { /* expected result */ }
-        Err(error) => panic!("Got unexpected error: {:?}", error),
+        Err(error) => panic!("Got unexpected error: {error:?}"),
         Ok(_) => panic!("Command unexpectedly succeeded"),
     }
 }

@@ -35,7 +35,7 @@ fn parse_network_name_input() {
     );
     let relative_path_to_first_node = second_node.as_ref().join("..");
     assert_eq!(
-        block_info::parse_network_name(&relative_path_to_first_node).unwrap(),
+        block_info::parse_network_name(relative_path_to_first_node).unwrap(),
         first_node.path().file_name().unwrap().to_str().unwrap()
     );
 

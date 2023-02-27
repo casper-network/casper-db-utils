@@ -10,7 +10,8 @@ use clap::{crate_description, crate_version, Arg, Command};
 use log::error;
 
 use subcommands::{
-    archive, check, execution_results_summary, latest_block_summary, trie_compact, unsparse, Error,
+    archive, check, execution_results_summary, extract_slice, latest_block_summary, trie_compact,
+    unsparse, Error,
 };
 
 const LOGGING: &str = "logging";
@@ -19,6 +20,7 @@ enum DisplayOrder {
     Archive,
     Check,
     ExecutionResults,
+    ExtractSlice,
     LatestBlock,
     TrieCompact,
     Unsparse,
@@ -34,6 +36,7 @@ fn cli() -> Command<'static> {
         .subcommand(execution_results_summary::command(
             DisplayOrder::ExecutionResults as usize,
         ))
+        .subcommand(extract_slice::command(DisplayOrder::ExtractSlice as usize))
         .subcommand(latest_block_summary::command(
             DisplayOrder::LatestBlock as usize,
         ))
@@ -80,6 +83,7 @@ fn main() {
         execution_results_summary::COMMAND_NAME => {
             execution_results_summary::run(matches).map_err(Error::from)
         }
+        extract_slice::COMMAND_NAME => extract_slice::run(matches).map_err(Error::from),
         latest_block_summary::COMMAND_NAME => {
             latest_block_summary::run(matches).map_err(Error::from)
         }

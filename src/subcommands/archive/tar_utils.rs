@@ -63,7 +63,7 @@ mod tests {
 
         for idx in 0..num_files {
             let mut file = NamedTempFile::new_in(src_dir.path()).unwrap();
-            file.write_all(format!("test file {}", idx).as_bytes())
+            file.write_all(format!("test file {idx}").as_bytes())
                 .unwrap();
             test_files.push(file);
         }
@@ -86,7 +86,7 @@ mod tests {
         for (idx, file) in test_files.iter().enumerate().take(num_files) {
             let path = dst_dir.path().join(file.path().file_name().unwrap());
             let contents = fs::read_to_string(&path).unwrap();
-            assert_eq!(contents, format!("test file {}", idx));
+            assert_eq!(contents, format!("test file {idx}"));
         }
     }
 }

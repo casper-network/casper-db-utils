@@ -18,10 +18,10 @@ use casper_types::{
     Key, StoredValue,
 };
 
-fn memoized_find_missing_descendants<'env>(
+fn memoized_find_missing_descendants(
     value_bytes: Bytes,
     trie_store: &LmdbTrieStore,
-    txn: &RwTransaction<'env>,
+    txn: &RwTransaction<'_>,
     missing_trie_keys: &mut Vec<Digest>,
     time_in_missing_trie_keys: &mut Duration,
 ) -> Result<(), anyhow::Error> {
@@ -51,11 +51,11 @@ fn memoized_find_missing_descendants<'env>(
     Ok(())
 }
 
-fn find_missing_trie_keys<'env>(
+fn find_missing_trie_keys(
     ptr: Pointer,
     missing_trie_keys: &mut Vec<Digest>,
     handle: &LmdbTrieStore,
-    txn: &RwTransaction<'env>,
+    txn: &RwTransaction<'_>,
 ) -> Result<(), anyhow::Error> {
     let ptr = match ptr {
         Pointer::LeafPointer(pointer) | Pointer::NodePointer(pointer) => pointer,

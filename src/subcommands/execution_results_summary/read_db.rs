@@ -135,7 +135,7 @@ pub fn execution_results_summary<P1: AsRef<Path>, P2: AsRef<Path>>(
     overwrite: bool,
 ) -> Result<(), Error> {
     let storage_path = db_path.as_ref().join(STORAGE_FILE_NAME);
-    let env = db::db_env(&storage_path)?;
+    let env = db::db_env(storage_path)?;
     let mut log_progress = false;
     // Validate the output file early so that, in case this fails
     // we don't unnecessarily read the whole database.

@@ -8,12 +8,12 @@ use log::info;
 
 use casper_hashing::Digest;
 
+use crate::common::db::TRIE_STORE_FILE_NAME;
+
 use super::{
     utils::{create_execution_engine, create_storage, load_execution_engine},
     Error,
 };
-
-pub(crate) const TRIE_STORE_FILE_NAME: &str = "data.lmdb";
 
 /// Defines behavior for opening destination trie store.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -91,8 +91,7 @@ fn validate_trie_paths<P1: AsRef<Path>, P2: AsRef<Path>>(
                         .open(destination_trie_path.as_ref().join(TRIE_STORE_FILE_NAME))
                         .map_err(|io_err| {
                             Error::InvalidDest(format!(
-                                "Couldn't overwrite destination file: {}",
-                                io_err
+                                "Couldn't overwrite destination file: {io_err}"
                             ))
                         })?;
                 } else {

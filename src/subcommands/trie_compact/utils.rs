@@ -18,7 +18,7 @@ use casper_node::{storage::Storage, StorageConfig, WithDir};
 use casper_types::ProtocolVersion;
 use lmdb::DatabaseFlags;
 
-use super::compact::TRIE_STORE_FILE_NAME;
+use crate::common::db::TRIE_STORE_FILE_NAME;
 
 /// LMDB max readers
 ///

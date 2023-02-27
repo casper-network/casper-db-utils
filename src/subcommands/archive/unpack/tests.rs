@@ -77,7 +77,7 @@ fn zstd_decode_roundtrip() {
 
     // Write the encoded contents to a file as well.
     let encoded_path = tmp_dir.path().join("encoded");
-    fs::write(&encoded_path, &encoded).unwrap();
+    fs::write(encoded_path, &encoded).unwrap();
 
     // Decode the response with the zstd streaming function.
     let mut decoder = zstd_utils::zstd_decode_stream(encoded.as_slice()).unwrap();

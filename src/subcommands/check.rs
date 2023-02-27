@@ -94,7 +94,7 @@ pub fn run(matches: &ArgMatches) -> Result<(), Error> {
         .value_of(START_AT)
         .expect("should have a default")
         .parse()
-        .unwrap_or_else(|_| panic!("Value of \"--{}\" must be an integer.", START_AT));
+        .unwrap_or_else(|_| panic!("Value of \"--{START_AT}\" must be an integer."));
 
     check_db(path, failfast, specific, start_at)
 }
@@ -106,7 +106,7 @@ fn check_db<P: AsRef<Path>>(
     start_at: usize,
 ) -> Result<(), Error> {
     let storage_path = path.as_ref().join(STORAGE_FILE_NAME);
-    let env = db_env(&storage_path)
+    let env = db_env(storage_path)
         .map_err(|lmdb_err| Error::Path(path.as_ref().to_path_buf(), lmdb_err))?;
     if let Some(db_name) = specific {
         match db_name.trim() {
