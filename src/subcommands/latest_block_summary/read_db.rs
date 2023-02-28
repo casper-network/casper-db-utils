@@ -90,14 +90,6 @@ fn get_highest_block(
         })?
         .into();
 
-    let actual_block_hash = highest_block_header.hash();
-    if block_hash != actual_block_hash {
-        return Err(Error::BlockHashDoesntMatch {
-            expected_block_hash: block_hash,
-            actual_block_hash,
-        });
-    }
-
     Ok((block_hash, highest_block_header))
 }
 

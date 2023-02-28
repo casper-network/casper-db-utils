@@ -88,10 +88,10 @@ fn latest_block_should_succeed() {
 
     // Create 2 block headers, height 0 and 1.
     let first_block = MockBlockHeader::default();
-    let first_block_key = [0u8, 0u8, 0u8];
+    let first_block_key = [0u8; 32];
 
     let mut second_block = MockBlockHeader::default();
-    let second_block_key = [1u8, 1u8, 1u8];
+    let second_block_key = [1u8; 32];
     second_block.height = 1;
 
     let env = &fixture.env;
