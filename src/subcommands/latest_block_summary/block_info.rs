@@ -8,7 +8,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use casper_hashing::Digest;
-use casper_node::types::{BlockHeader, Timestamp};
+use casper_node::types::{BlockHash, BlockHeader, Timestamp};
 use casper_types::{EraId, ProtocolVersion};
 
 #[cfg(test)]
@@ -17,6 +17,7 @@ use crate::test_utils::MockBlockHeader;
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub struct BlockInfo {
     network_name: Option<String>,
+    block_hash: BlockHash,
     body_hash: Digest,
     era_id: EraId,
     height: u64,
@@ -26,8 +27,13 @@ pub struct BlockInfo {
 }
 
 impl BlockInfo {
-    pub fn new(network_name: Option<String>, block_header: BlockHeader) -> Self {
+    pub fn new(
+        network_name: Option<String>,
+        block_hash: BlockHash,
+        block_header: BlockHeader,
+    ) -> Self {
         Self {
+            block_hash,
             network_name,
             body_hash: *block_header.body_hash(),
             era_id: block_header.era_id(),

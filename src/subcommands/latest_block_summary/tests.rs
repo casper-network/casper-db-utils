@@ -47,7 +47,7 @@ fn parse_network_name_input() {
 fn dump_with_net_name() {
     let json_header = JsonBlockHeader::doc_example().clone();
     let header: BlockHeader = json_header.into();
-    let block_info = BlockInfo::new(Some("casper".to_string()), header);
+    let block_info = BlockInfo::new(Some("casper".to_string()), header.hash(), header);
     let reference_json = serde_json::to_string_pretty(&block_info).unwrap();
 
     let out_file_path = OUT_DIR.as_ref().join("casper_network.json");
@@ -66,7 +66,7 @@ fn dump_with_net_name() {
 fn dump_without_net_name() {
     let json_header = JsonBlockHeader::doc_example().clone();
     let header: BlockHeader = json_header.into();
-    let block_info = BlockInfo::new(None, header);
+    let block_info = BlockInfo::new(None, header.hash(), header);
     let reference_json = serde_json::to_string_pretty(&block_info).unwrap();
 
     let out_file_path = OUT_DIR.as_ref().join("no_net_name.json");
@@ -88,10 +88,10 @@ fn latest_block_should_succeed() {
 
     // Create 2 block headers, height 0 and 1.
     let first_block = MockBlockHeader::default();
-    let first_block_key = [0u8, 0u8, 0u8];
+    let first_block_key = [0u8; 32];
 
     let mut second_block = MockBlockHeader::default();
-    let second_block_key = [1u8, 1u8, 1u8];
+    let second_block_key = [1u8; 32];
     second_block.height = 1;
 
     let env = &fixture.env;

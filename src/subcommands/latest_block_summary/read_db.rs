@@ -5,11 +5,12 @@ use std::{
     result::Result,
 };
 
+use casper_hashing::Digest;
 use lmdb::{Cursor, Environment, Transaction};
 use log::{info, warn};
 use serde_json::{self, Error as SerializationError};
 
-use casper_node::types::BlockHeader;
+use casper_node::types::{BlockHash, BlockHeader};
 
 use crate::common::{
     db::{self, BlockHeaderDatabase, Database, STORAGE_FILE_NAME},
@@ -22,7 +23,10 @@ use super::{
     Error,
 };
 
-fn get_highest_block(env: &Environment, log_progress: bool) -> Result<BlockHeader, Error> {
+fn get_highest_block(
+    env: &Environment,
+    log_progress: bool,
+) -> Result<(BlockHash, BlockHeader), Error> {
     let txn = env.begin_ro_txn()?;
     let db = unsafe { txn.open_db(Some(BlockHeaderDatabase::db_name()))? };
 
@@ -79,7 +83,14 @@ fn get_highest_block(env: &Environment, log_progress: bool) -> Result<BlockHeade
             )
         })?;
 
-    Ok(highest_block_header)
+    let block_hash = Digest::try_from(max_height_key)
+        .map_err(|err| Error::InvalidBlockHash {
+            err,
+            val: String::from_utf8_lossy(max_height_key).to_string(),
+        })?
+        .into();
+
+    Ok((block_hash, highest_block_header))
 }
 
 pub(crate) fn dump_block_info<W: Write + ?Sized>(
@@ -117,8 +128,8 @@ pub fn latest_block_summary<P1: AsRef<Path>, P2: AsRef<Path>>(
         }
     };
 
-    let highest_block = get_highest_block(&env, log_progress)?;
-    let block_info = BlockInfo::new(network_name, highest_block);
+    let (block_hash, highest_block) = get_highest_block(&env, log_progress)?;
+    let block_info = BlockInfo::new(network_name, block_hash, highest_block);
     dump_block_info(&block_info, out_writer)?;
 
     Ok(())

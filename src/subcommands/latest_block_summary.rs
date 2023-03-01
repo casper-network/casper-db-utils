@@ -3,7 +3,7 @@ mod read_db;
 #[cfg(test)]
 mod tests;
 
-use std::{io::Error as IoError, path::Path};
+use std::{array::TryFromSliceError, io::Error as IoError, path::Path};
 
 use bincode::Error as BincodeError;
 use clap::{Arg, ArgMatches, Command};
@@ -31,6 +31,8 @@ pub enum Error {
     Serialize(#[from] SerializationError),
     #[error("Error writing output: {0}")]
     Output(#[from] IoError),
+    #[error("Invalid block hash {err:?} {val}")]
+    InvalidBlockHash { err: TryFromSliceError, val: String },
 }
 
 enum DisplayOrder {
