@@ -22,10 +22,7 @@ use crate::{
         },
         Error,
     },
-    test_utils::{
-        mock_block_header, mock_deploy_hash, mock_deploy_metadata, success_execution_result,
-        LmdbTestFixture, MockBlockHeader,
-    },
+    test_utils::{self, LmdbTestFixture, MockBlockHeader},
 };
 
 static OUT_DIR: Lazy<TempDir> = Lazy::new(|| tempfile::tempdir().unwrap());
@@ -156,7 +153,7 @@ fn different_execution_results_stats_feed() {
     for i in 1..4 {
         let mut execution_results = vec![];
         for _ in 0..(10 * i) {
-            execution_results.push(success_execution_result());
+            execution_results.push(test_utils::success_execution_result());
         }
         bincode_sizes.push(bincode::serialized_size(&execution_results).unwrap() as usize);
         bytesrepr_sizes.push(chunk_count_after_partition(
@@ -190,7 +187,7 @@ fn identical_execution_results_stats_feed() {
     for _ in 1..4 {
         let mut execution_results = vec![];
         for _ in 0..10 {
-            execution_results.push(success_execution_result());
+            execution_results.push(test_utils::success_execution_result());
         }
         bincode_sizes.push(bincode::serialized_size(&execution_results).unwrap() as usize);
         bytesrepr_sizes.push(chunk_count_after_partition(
@@ -236,9 +233,12 @@ fn execution_results_stats_should_succeed() {
     );
     let out_file_path = OUT_DIR.as_ref().join("execution_results_summary.json");
 
-    let deploy_hashes: Vec<DeployHash> = (0..DEPLOY_COUNT as u8).map(mock_deploy_hash).collect();
-    let block_headers: Vec<(BlockHash, MockBlockHeader)> =
-        (0..BLOCK_COUNT as u8).map(mock_block_header).collect();
+    let deploy_hashes: Vec<DeployHash> = (0..DEPLOY_COUNT as u8)
+        .map(test_utils::mock_deploy_hash)
+        .collect();
+    let block_headers: Vec<(BlockHash, MockBlockHeader)> = (0..BLOCK_COUNT as u8)
+        .map(test_utils::mock_block_header)
+        .collect();
     let mut block_bodies = vec![];
     let mut block_body_deploy_map: Vec<Vec<usize>> = vec![];
     block_bodies.push(BlockBody::new(vec![
@@ -253,10 +253,10 @@ fn execution_results_stats_should_succeed() {
     block_body_deploy_map.push(vec![2, 3]);
 
     let deploy_metadatas = vec![
-        mock_deploy_metadata(slice::from_ref(&block_headers[0].0)),
-        mock_deploy_metadata(&[block_headers[0].0, block_headers[1].0]),
-        mock_deploy_metadata(&[block_headers[1].0, block_headers[2].0]),
-        mock_deploy_metadata(&[block_headers[0].0, block_headers[2].0]),
+        test_utils::mock_deploy_metadata(slice::from_ref(&block_headers[0].0)),
+        test_utils::mock_deploy_metadata(&[block_headers[0].0, block_headers[1].0]),
+        test_utils::mock_deploy_metadata(&[block_headers[1].0, block_headers[2].0]),
+        test_utils::mock_deploy_metadata(&[block_headers[0].0, block_headers[2].0]),
     ];
 
     let env = &fixture.env;
@@ -336,7 +336,7 @@ fn execution_results_summary_invalid_key_should_fail() {
 
     let env = &fixture.env;
     if let Ok(mut txn) = env.begin_rw_txn() {
-        let (_, block_header) = mock_block_header(0);
+        let (_, block_header) = test_utils::mock_block_header(0);
         let bogus_hash = [0u8; 1];
         // Insert a block header in the database with a key that can't be
         // deserialized.
@@ -369,8 +369,8 @@ fn execution_results_summary_parsing_should_fail() {
     );
     let out_file_path = OUT_DIR.as_ref().join("parsing.json");
 
-    let deploy_hash = mock_deploy_hash(0);
-    let (block_hash, block_header) = mock_block_header(0);
+    let deploy_hash = test_utils::mock_deploy_hash(0);
+    let (block_hash, block_header) = test_utils::mock_block_header(0);
     let block_body = BlockBody::new(vec![deploy_hash]);
 
     let env = &fixture.env;
