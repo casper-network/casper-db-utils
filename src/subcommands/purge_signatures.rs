@@ -4,7 +4,7 @@ mod signatures;
 #[cfg(test)]
 mod tests;
 
-use std::path::Path;
+use std::{collections::BTreeSet, path::Path};
 
 use bincode::Error as BincodeError;
 use casper_node::types::BlockHash;
@@ -97,7 +97,7 @@ pub fn command(display_order: usize) -> Command<'static> {
 
 pub fn run(matches: &ArgMatches) -> Result<(), Error> {
     let path = Path::new(matches.value_of(DB_PATH).expect("should have db-path arg"));
-    let weak_finality_block_list: Vec<u64> = matches
+    let weak_finality_block_list: BTreeSet<u64> = matches
         .value_of(WEAK_FINALITY)
         .map(|height_list| height_list.split(','))
         .map(|height_str| {
@@ -109,7 +109,7 @@ pub fn run(matches: &ArgMatches) -> Result<(), Error> {
         })
         .map(|list| list.collect())
         .unwrap_or_default();
-    let no_finality_block_list: Vec<u64> = matches
+    let no_finality_block_list: BTreeSet<u64> = matches
         .value_of(NO_FINALITY)
         .map(|height_list| height_list.split(','))
         .map(|height_str| {

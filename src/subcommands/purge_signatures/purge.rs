@@ -243,24 +243,21 @@ pub(crate) fn purge_signatures_for_blocks(
 
 pub fn purge_signatures<P: AsRef<Path>>(
     db_path: P,
-    weak_finality_block_list: Vec<u64>,
-    no_finality_block_list: Vec<u64>,
+    weak_finality_block_list: BTreeSet<u64>,
+    no_finality_block_list: BTreeSet<u64>,
 ) -> Result<(), Error> {
     let storage_path = db_path.as_ref().join(STORAGE_FILE_NAME);
     let env = db::db_env(storage_path)?;
-    let heights_to_visit: BTreeSet<u64> = weak_finality_block_list
-        .iter()
-        .chain(no_finality_block_list.iter())
+    let heights_to_visit = weak_finality_block_list
+        .union(&no_finality_block_list)
         .copied()
         .collect();
     let indices = initialize_indices(&env, &heights_to_visit)?;
     if !weak_finality_block_list.is_empty() {
-        let weak_finality_heights = weak_finality_block_list.iter().copied().collect();
-        purge_signatures_for_blocks(&env, &indices, weak_finality_heights, false)?;
+        purge_signatures_for_blocks(&env, &indices, weak_finality_block_list, false)?;
     }
     if !no_finality_block_list.is_empty() {
-        let no_finality_heights = no_finality_block_list.iter().copied().collect();
-        purge_signatures_for_blocks(&env, &indices, no_finality_heights, true)?;
+        purge_signatures_for_blocks(&env, &indices, no_finality_block_list, true)?;
     }
     Ok(())
 }
