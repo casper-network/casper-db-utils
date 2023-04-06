@@ -43,7 +43,7 @@ pub(super) fn strip_signatures(
     }
     let mut accumulated_sigs: BTreeSet<&PublicKey> = Default::default();
     let mut accumulated_weight = U512::zero();
-    // Start from the smalles signatures and add them to our pool until weak
+    // Start from the smallest signatures and add them to our pool until weak
     // finality is reached.
     for (weight, key) in inverse_map
         .iter()
@@ -79,7 +79,7 @@ pub(super) fn strip_signatures(
     if !is_weak_finality(accumulated_weight, total_weight) {
         return false;
     }
-    // Keep only the signatures.
+    // Keep only the accumulated signatures.
     signatures
         .proofs
         .retain(|key, _| accumulated_sigs.contains(key));
