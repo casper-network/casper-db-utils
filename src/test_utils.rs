@@ -19,15 +19,13 @@ use casper_types::{
 
 pub(crate) static KEYS: Lazy<Vec<PublicKey>> = Lazy::new(|| {
     (0..10)
-        .into_iter()
         .map(|i| {
             let u256 = U256::from(i);
             let mut u256_bytes = [0u8; 32];
             u256.to_big_endian(&mut u256_bytes);
             let secret_key =
                 SecretKey::ed25519_from_bytes(u256_bytes).expect("should create secret key");
-            let public_key = PublicKey::from(&secret_key);
-            public_key
+            PublicKey::from(&secret_key)
         })
         .collect()
 });

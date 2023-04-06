@@ -23,7 +23,7 @@ fn get_sigs_from_db<T: Transaction>(
     let serialized_sigs = txn
         .get(*fixture.db(Some("block_metadata")).unwrap(), block_hash)
         .unwrap();
-    let block_sigs: BlockSignatures = bincode::deserialize(&serialized_sigs).unwrap();
+    let block_sigs: BlockSignatures = bincode::deserialize(serialized_sigs).unwrap();
     assert_eq!(block_sigs.block_hash, *block_hash);
     block_sigs
 }
@@ -61,22 +61,22 @@ fn indices_initialization() {
     let env = &fixture.env;
     // Insert the blocks into the database.
     if let Ok(mut txn) = env.begin_rw_txn() {
-        for i in 0..BLOCK_COUNT {
+        for (block_hash, block_header) in block_headers.iter().take(BLOCK_COUNT) {
             // Store the block header.
             txn.put(
                 *fixture.db(Some("block_header")).unwrap(),
-                &block_headers[i].0,
-                &bincode::serialize(&block_headers[i].1).unwrap(),
+                block_hash,
+                &bincode::serialize(&block_header).unwrap(),
                 WriteFlags::empty(),
             )
             .unwrap();
         }
-        for i in 0..SWITCH_BLOCK_COUNT {
+        for (block_hash, block_header) in switch_block_headers.iter().take(SWITCH_BLOCK_COUNT) {
             // Store the switch block header.
             txn.put(
                 *fixture.db(Some("block_header")).unwrap(),
-                &switch_block_headers[i].0,
-                &bincode::serialize(&switch_block_headers[i].1).unwrap(),
+                block_hash,
+                &bincode::serialize(block_header).unwrap(),
                 WriteFlags::empty(),
             )
             .unwrap();
@@ -173,12 +173,12 @@ fn era_weights() {
     let env = &fixture.env;
     // Insert the blocks into the database.
     if let Ok(mut txn) = env.begin_rw_txn() {
-        for i in 0..SWITCH_BLOCK_COUNT {
+        for (block_hash, block_header) in switch_block_headers.iter().take(SWITCH_BLOCK_COUNT) {
             // Store the switch block header.
             txn.put(
                 *fixture.db(Some("block_header")).unwrap(),
-                &switch_block_headers[i].0,
-                &bincode::serialize(&switch_block_headers[i].1).unwrap(),
+                block_hash,
+                &bincode::serialize(block_header).unwrap(),
                 WriteFlags::empty(),
             )
             .unwrap();
@@ -388,12 +388,12 @@ fn purge_signatures_should_work() {
             )
             .unwrap();
         }
-        for i in 0..SWITCH_BLOCK_COUNT {
+        for (block_hash, block_header) in switch_block_headers.iter().take(SWITCH_BLOCK_COUNT) {
             // Store the switch block header.
             txn.put(
                 *fixture.db(Some("block_header")).unwrap(),
-                &switch_block_headers[i].0,
-                &bincode::serialize(&switch_block_headers[i].1).unwrap(),
+                block_hash,
+                &bincode::serialize(block_header).unwrap(),
                 WriteFlags::empty(),
             )
             .unwrap();
@@ -560,12 +560,12 @@ fn purge_signatures_bad_input() {
             )
             .unwrap();
         }
-        for i in 0..SWITCH_BLOCK_COUNT {
+        for (block_hash, block_header) in switch_block_headers.iter().take(SWITCH_BLOCK_COUNT) {
             // Store the switch block header.
             txn.put(
                 *fixture.db(Some("block_header")).unwrap(),
-                &switch_block_headers[i].0,
-                &bincode::serialize(&switch_block_headers[i].1).unwrap(),
+                block_hash,
+                &bincode::serialize(block_header).unwrap(),
                 WriteFlags::empty(),
             )
             .unwrap();
