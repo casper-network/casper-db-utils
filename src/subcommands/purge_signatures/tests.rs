@@ -610,3 +610,119 @@ fn purge_signatures_bad_input() {
         other => panic!("Unexpected result: {other:?}"),
     };
 }
+
+#[test]
+fn purge_signatures_missing_from_db() {
+    const BLOCK_COUNT: usize = 2;
+
+    let fixture = LmdbTestFixture::new(vec!["block_header", "block_metadata"], None);
+    // Create mock block headers.
+    let mut block_headers: Vec<(BlockHash, MockBlockHeader)> = (0..BLOCK_COUNT as u8)
+        .map(test_utils::mock_block_header)
+        .collect();
+    // Set an era and height for each one.
+    block_headers[0].1.era_id = 10.into();
+    block_headers[0].1.height = 100;
+    block_headers[1].1.era_id = 10.into();
+    block_headers[1].1.height = 200;
+    // Create mock block signatures.
+    let mut block_signatures: Vec<BlockSignatures> = block_headers
+        .iter()
+        .map(|(block_hash, header)| BlockSignatures::new(*block_hash, header.era_id))
+        .collect();
+    // Create mock switch block headers.
+    let (switch_block_hash, mut switch_block_header) = test_utils::mock_switch_block_header(0);
+    // Set an appropriate era and height for switch block 1.
+    switch_block_header.era_id = block_headers[0].1.era_id - 1;
+    switch_block_header.height = 80;
+    // Add weights for this switch block (400, 600).
+    switch_block_header.insert_key_weight(KEYS[0].clone(), 400.into());
+    switch_block_header.insert_key_weight(KEYS[1].clone(), 600.into());
+
+    // Add keys and signatures for block 1 but skip block 2.
+    block_signatures[0]
+        .proofs
+        .insert(KEYS[0].clone(), Signature::System);
+    block_signatures[0]
+        .proofs
+        .insert(KEYS[1].clone(), Signature::System);
+
+    let env = &fixture.env;
+    // Insert the blocks and signatures into the database.
+    if let Ok(mut txn) = env.begin_rw_txn() {
+        for (block_hash, block_header) in block_headers.iter().take(BLOCK_COUNT) {
+            // Store the block header.
+            txn.put(
+                *fixture.db(Some("block_header")).unwrap(),
+                block_hash,
+                &bincode::serialize(block_header).unwrap(),
+                WriteFlags::empty(),
+            )
+            .unwrap();
+        }
+        // Store the signatures for block 1.
+        txn.put(
+            *fixture.db(Some("block_metadata")).unwrap(),
+            &block_headers[0].0,
+            &bincode::serialize(&block_signatures[0]).unwrap(),
+            WriteFlags::empty(),
+        )
+        .unwrap();
+        // Store the switch block header.
+        txn.put(
+            *fixture.db(Some("block_header")).unwrap(),
+            &switch_block_hash,
+            &bincode::serialize(&switch_block_header).unwrap(),
+            WriteFlags::empty(),
+        )
+        .unwrap();
+        txn.commit().unwrap();
+    };
+
+    let indices = initialize_indices(env, &BTreeSet::from([100, 200])).unwrap();
+
+    // Purge signatures for blocks 1 and 2 to weak finality. The operation
+    // should succeed even if the signatures for block 2 are missing.
+    assert!(purge_signatures_for_blocks(env, &indices, BTreeSet::from([100, 200]), false).is_ok());
+    if let Ok(txn) = env.begin_ro_txn() {
+        let block_1_sigs = get_sigs_from_db(&txn, &fixture, &block_headers[0].0);
+        // Block 1 had both keys (400, 600), so it should have kept
+        // the first one.
+        assert!(block_1_sigs.proofs.contains_key(&KEYS[0]));
+        assert!(!block_1_sigs.proofs.contains_key(&KEYS[1]));
+
+        // We should have no record for the signatures of block 2.
+        match txn.get(
+            *fixture.db(Some("block_metadata")).unwrap(),
+            &block_headers[1].0,
+        ) {
+            Err(LmdbError::NotFound) => {}
+            other => panic!("Unexpected search result: {other:?}"),
+        }
+        txn.commit().unwrap();
+    };
+
+    // Purge signatures for blocks 1 and 2 to no finality. The operation
+    // should succeed even if the signatures for block 2 are missing.
+    assert!(purge_signatures_for_blocks(env, &indices, BTreeSet::from([100, 200]), true).is_ok());
+    if let Ok(txn) = env.begin_ro_txn() {
+        // We should have no record for the signatures of block 1.
+        match txn.get(
+            *fixture.db(Some("block_metadata")).unwrap(),
+            &block_headers[0].0,
+        ) {
+            Err(LmdbError::NotFound) => {}
+            other => panic!("Unexpected search result: {other:?}"),
+        }
+
+        // We should have no record for the signatures of block 2.
+        match txn.get(
+            *fixture.db(Some("block_metadata")).unwrap(),
+            &block_headers[1].0,
+        ) {
+            Err(LmdbError::NotFound) => {}
+            other => panic!("Unexpected search result: {other:?}"),
+        }
+        txn.commit().unwrap();
+    };
+}
