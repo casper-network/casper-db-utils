@@ -6,7 +6,7 @@ use std::{
 use casper_hashing::Digest;
 use casper_node::types::{BlockHash, BlockHeader};
 use casper_types::{EraId, PublicKey, U512};
-use lmdb::{Cursor, Database, Environment, Transaction, WriteFlags};
+use lmdb::{Cursor, Database, Environment, Error as LmdbError, Transaction, WriteFlags};
 use log::{error, info, warn};
 
 use crate::common::{
@@ -214,9 +214,20 @@ pub(crate) fn purge_signatures_for_blocks(
         // trying to strip any signatures.
         era_weights.refresh_weights_for_era(&txn, header_db, indices, era_id)?;
 
-        let raw_signatures = txn.get(signatures_db, &block_hash)?;
-        let mut block_signatures: BlockSignatures = bincode::deserialize(raw_signatures)
-            .map_err(|bincode_err| Error::SignaturesParsing(*block_hash, bincode_err))?;
+        let mut block_signatures: BlockSignatures = match txn.get(signatures_db, &block_hash) {
+            Ok(raw_signatures) => bincode::deserialize(raw_signatures)
+                .map_err(|bincode_err| Error::SignaturesParsing(*block_hash, bincode_err))?,
+            Err(LmdbError::NotFound) => {
+                // Skip blocks which have no signature entry in the database.
+                warn!(
+                    "No signature entry in the database for block \
+                    {block_hash} at height {block_height}"
+                );
+                progress_tracker.advance_by(1);
+                continue;
+            }
+            Err(lmdb_err) => return Err(Error::Database(lmdb_err)),
+        };
 
         if full_purge {
             // Delete the record completely from the database.
