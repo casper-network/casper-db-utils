@@ -1,4 +1,4 @@
-use std::collections::{btree_map::Entry, BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet};
 
 use casper_types::{PublicKey, U512};
 
@@ -34,12 +34,7 @@ pub(super) fn strip_signatures(
     // Store the signature keys sorted by their respective weight.
     let mut inverse_map: BTreeMap<U512, Vec<&PublicKey>> = BTreeMap::default();
     for (key, weight) in weights.iter() {
-        match inverse_map.entry(*weight) {
-            Entry::Vacant(vacant_entry) => {
-                vacant_entry.insert(vec![key]);
-            }
-            Entry::Occupied(mut occupied_entry) => occupied_entry.get_mut().push(key),
-        }
+        inverse_map.entry(*weight).or_default().push(key);
     }
     let mut accumulated_sigs: BTreeSet<&PublicKey> = Default::default();
     let mut accumulated_weight = U512::zero();

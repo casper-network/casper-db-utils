@@ -281,7 +281,7 @@ pub(crate) fn purge_signatures_for_blocks(
                 WriteFlags::default(),
             )?;
         } else {
-            info!("Couldn't strip signatures for block {block_hash} at height {block_height}");
+            warn!("Couldn't strip signatures for block {block_hash} at height {block_height}");
         }
         progress_tracker.advance_by(1);
     }

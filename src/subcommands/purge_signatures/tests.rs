@@ -332,7 +332,7 @@ fn era_weights() {
         );
         assert!(!era_weights.weights_mut().contains_key(&KEYS[0]));
 
-        // Try to update the weights for a inexistent switch block.
+        // Try to update the weights for a nonexistent switch block.
         let expected_missing_era_id = switch_block_headers[1].1.era_id.successor().successor();
         match era_weights.refresh_weights_for_era(&txn, db, &indices, expected_missing_era_id) {
             Err(Error::MissingEraWeights(actual_missing_era_id)) => {
@@ -638,7 +638,7 @@ fn purge_signatures_should_work() {
         assert!(block_2_sigs.proofs.contains_key(&KEYS[0]));
         assert!(!block_2_sigs.proofs.contains_key(&KEYS[1]));
 
-        // Block 2 should be the same as before.
+        // Block 3 should be the same as before.
         let block_3_sigs = get_sigs_from_db(&txn, &fixture, &block_headers[2].0);
         assert!(block_3_sigs.proofs.contains_key(&KEYS[0]));
         assert!(block_3_sigs.proofs.contains_key(&KEYS[1]));
