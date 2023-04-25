@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use casper_node::types::BlockHash;
-use casper_types::{Signature, U512};
+use casper_types::{ProtocolVersion, Signature, U512};
 use lmdb::{Error as LmdbError, Transaction, WriteFlags};
 
 use crate::{
@@ -138,6 +138,92 @@ fn indices_initialization() {
 }
 
 #[test]
+fn indices_initialization_with_upgrade() {
+    const BLOCK_COUNT: usize = 4;
+    const SWITCH_BLOCK_COUNT: usize = 4;
+
+    let fixture = LmdbTestFixture::new(vec!["block_header"], None);
+    // Create mock block headers.
+    let mut block_headers: Vec<(BlockHash, MockBlockHeader)> = (0..BLOCK_COUNT as u8)
+        .map(test_utils::mock_block_header)
+        .collect();
+    // Set an era and height for each one.
+    block_headers[0].1.era_id = 10.into();
+    block_headers[0].1.height = 80;
+
+    block_headers[1].1.era_id = 11.into();
+    block_headers[1].1.height = 200;
+    block_headers[2].1.protocol_version = ProtocolVersion::from_parts(1, 1, 0);
+
+    block_headers[2].1.era_id = 12.into();
+    block_headers[2].1.height = 290;
+    block_headers[2].1.protocol_version = ProtocolVersion::from_parts(2, 0, 0);
+
+    block_headers[3].1.era_id = 13.into();
+    block_headers[3].1.height = 350;
+    block_headers[3].1.protocol_version = ProtocolVersion::from_parts(2, 0, 0);
+
+    // Create mock switch blocks.
+    let mut switch_block_headers: Vec<(BlockHash, MockSwitchBlockHeader)> = (0..SWITCH_BLOCK_COUNT
+        as u8)
+        .map(test_utils::mock_switch_block_header)
+        .collect();
+    // Set an appropriate era and height for each one.
+    switch_block_headers[0].1.era_id = block_headers[0].1.era_id - 1;
+    switch_block_headers[0].1.height = 60;
+
+    switch_block_headers[1].1.era_id = block_headers[1].1.era_id - 1;
+    switch_block_headers[1].1.height = 180;
+
+    switch_block_headers[2].1.era_id = block_headers[2].1.era_id - 1;
+    switch_block_headers[2].1.height = 250;
+    switch_block_headers[2].1.protocol_version = ProtocolVersion::from_parts(1, 1, 0);
+
+    switch_block_headers[3].1.height = 300;
+    switch_block_headers[3].1.protocol_version = ProtocolVersion::from_parts(2, 0, 0);
+
+    let env = &fixture.env;
+    // Insert the blocks into the database.
+    if let Ok(mut txn) = env.begin_rw_txn() {
+        for (block_hash, block_header) in block_headers.iter().take(BLOCK_COUNT) {
+            // Store the block header.
+            txn.put(
+                *fixture.db(Some("block_header")).unwrap(),
+                block_hash,
+                &bincode::serialize(&block_header).unwrap(),
+                WriteFlags::empty(),
+            )
+            .unwrap();
+        }
+        for (block_hash, block_header) in switch_block_headers.iter().take(SWITCH_BLOCK_COUNT) {
+            // Store the switch block header.
+            txn.put(
+                *fixture.db(Some("block_header")).unwrap(),
+                block_hash,
+                &bincode::serialize(block_header).unwrap(),
+                WriteFlags::empty(),
+            )
+            .unwrap();
+        }
+        txn.commit().unwrap();
+    };
+
+    let indices = initialize_indices(env, &BTreeSet::from([100, 200, 300])).unwrap();
+    assert!(!indices
+        .switch_blocks_before_upgrade
+        .contains(&switch_block_headers[0].1.height));
+    assert!(indices
+        .switch_blocks_before_upgrade
+        .contains(&switch_block_headers[1].1.height));
+    assert!(indices
+        .switch_blocks_before_upgrade
+        .contains(&switch_block_headers[2].1.height));
+    assert!(!indices
+        .switch_blocks_before_upgrade
+        .contains(&switch_block_headers[3].1.height));
+}
+
+#[test]
 fn era_weights() {
     const SWITCH_BLOCK_COUNT: usize = 2;
 
@@ -190,14 +276,14 @@ fn era_weights() {
     if let Ok(txn) = env.begin_ro_txn() {
         let db = env.open_db(Some("block_header")).unwrap();
         // Try to update the weights for the first switch block.
-        assert!(era_weights
+        assert!(!era_weights
             .refresh_weights_for_era(
                 &txn,
                 db,
                 &indices,
                 switch_block_headers[0].1.era_id.successor()
             )
-            .is_ok());
+            .unwrap());
         assert_eq!(
             era_weights.era_id(),
             switch_block_headers[0].1.era_id.successor()
@@ -209,14 +295,14 @@ fn era_weights() {
         assert!(!era_weights.weights_mut().contains_key(&KEYS[1]));
 
         // Try to update the weights for the second switch block.
-        assert!(era_weights
+        assert!(!era_weights
             .refresh_weights_for_era(
                 &txn,
                 db,
                 &indices,
                 switch_block_headers[1].1.era_id.successor()
             )
-            .is_ok());
+            .unwrap());
         assert_eq!(
             era_weights.era_id(),
             switch_block_headers[1].1.era_id.successor()
@@ -228,14 +314,14 @@ fn era_weights() {
         assert!(!era_weights.weights_mut().contains_key(&KEYS[0]));
 
         // Try to update the weights for the second switch block again.
-        assert!(era_weights
+        assert!(!era_weights
             .refresh_weights_for_era(
                 &txn,
                 db,
                 &indices,
                 switch_block_headers[1].1.era_id.successor()
             )
-            .is_ok());
+            .unwrap());
         assert_eq!(
             era_weights.era_id(),
             switch_block_headers[1].1.era_id.successor()
@@ -279,6 +365,101 @@ fn era_weights() {
             }
             _ => panic!("Unexpected failure"),
         }
+        txn.commit().unwrap();
+    };
+}
+
+#[test]
+fn era_weights_with_upgrade() {
+    const SWITCH_BLOCK_COUNT: usize = 2;
+
+    let fixture = LmdbTestFixture::new(vec!["block_header"], None);
+    // Create mock switch block headers.
+    let mut switch_block_headers: Vec<(BlockHash, MockSwitchBlockHeader)> = (0..SWITCH_BLOCK_COUNT
+        as u8)
+        .map(test_utils::mock_switch_block_header)
+        .collect();
+    // Set an era and height for the first one.
+    switch_block_headers[0].1.era_id = 10.into();
+    switch_block_headers[0].1.height = 80;
+    // Insert some weight for the next era weights.
+    switch_block_headers[0]
+        .1
+        .era_end
+        .as_mut()
+        .unwrap()
+        .next_era_validator_weights
+        .insert(KEYS[0].clone(), 100.into());
+    // Set an era and height for the second one.
+    switch_block_headers[1].1.era_id = 11.into();
+    switch_block_headers[1].1.height = 280;
+    // Insert some weight for the next era weights.
+    switch_block_headers[1]
+        .1
+        .era_end
+        .as_mut()
+        .unwrap()
+        .next_era_validator_weights
+        .insert(KEYS[1].clone(), 100.into());
+    // Upgrade the version of the second and third switch blocks.
+    switch_block_headers[1].1.protocol_version = ProtocolVersion::from_parts(1, 1, 0);
+
+    let env = &fixture.env;
+    // Insert the blocks into the database.
+    if let Ok(mut txn) = env.begin_rw_txn() {
+        for (block_hash, block_header) in switch_block_headers.iter().take(SWITCH_BLOCK_COUNT) {
+            // Store the switch block header.
+            txn.put(
+                *fixture.db(Some("block_header")).unwrap(),
+                block_hash,
+                &bincode::serialize(block_header).unwrap(),
+                WriteFlags::empty(),
+            )
+            .unwrap();
+        }
+        txn.commit().unwrap();
+    };
+    let indices = initialize_indices(env, &BTreeSet::from([80, 280])).unwrap();
+    let mut era_weights = EraWeights::default();
+    if let Ok(txn) = env.begin_ro_txn() {
+        let db = env.open_db(Some("block_header")).unwrap();
+
+        assert!(era_weights
+            .refresh_weights_for_era(
+                &txn,
+                db,
+                &indices,
+                switch_block_headers[0].1.era_id.successor()
+            )
+            .unwrap());
+
+        assert!(!era_weights
+            .refresh_weights_for_era(
+                &txn,
+                db,
+                &indices,
+                switch_block_headers[1].1.era_id.successor()
+            )
+            .unwrap());
+
+        assert!(era_weights
+            .refresh_weights_for_era(
+                &txn,
+                db,
+                &indices,
+                switch_block_headers[0].1.era_id.successor()
+            )
+            .unwrap());
+
+        assert!(!era_weights
+            .refresh_weights_for_era(
+                &txn,
+                db,
+                &indices,
+                switch_block_headers[1].1.era_id.successor()
+            )
+            .unwrap());
+
         txn.commit().unwrap();
     };
 }
