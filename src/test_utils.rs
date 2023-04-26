@@ -1,14 +1,34 @@
 #![cfg(test)]
 
-use std::{collections::HashMap, fs::OpenOptions, path::PathBuf};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fs::OpenOptions,
+    path::PathBuf,
+};
 
 use lmdb::{Database as LmdbDatabase, DatabaseFlags, Environment, EnvironmentFlags};
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use tempfile::{NamedTempFile, TempDir};
 
 use casper_hashing::Digest;
 use casper_node::types::{BlockHash, DeployHash, DeployMetadata, Timestamp};
-use casper_types::{EraId, ExecutionEffect, ExecutionResult, ProtocolVersion};
+use casper_types::{
+    EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, U256, U512,
+};
+
+pub(crate) static KEYS: Lazy<Vec<PublicKey>> = Lazy::new(|| {
+    (0..10)
+        .map(|i| {
+            let u256 = U256::from(i);
+            let mut u256_bytes = [0u8; 32];
+            u256.to_big_endian(&mut u256_bytes);
+            let secret_key =
+                SecretKey::ed25519_from_bytes(u256_bytes).expect("should create secret key");
+            PublicKey::from(&secret_key)
+        })
+        .collect()
+});
 
 pub struct LmdbTestFixture {
     pub env: Environment,
@@ -130,6 +150,19 @@ pub(crate) fn mock_block_header(idx: u8) -> (BlockHash, MockBlockHeader) {
     (block_hash, block_header)
 }
 
+pub(crate) fn mock_switch_block_header(idx: u8) -> (BlockHash, MockSwitchBlockHeader) {
+    let mut block_header = MockSwitchBlockHeader::default();
+    let block_hash_digest: Digest = {
+        let mut bytes = [idx; Digest::LENGTH];
+        bytes[Digest::LENGTH - 1] = 255;
+        bytes
+    }
+    .into();
+    let block_hash: BlockHash = block_hash_digest.into();
+    block_header.body_hash = [idx; Digest::LENGTH].into();
+    (block_hash, block_header)
+}
+
 pub(crate) fn mock_deploy_metadata(block_hashes: &[BlockHash]) -> DeployMetadata {
     let mut deploy_metadata = DeployMetadata::default();
     for block_hash in block_hashes {
@@ -145,5 +178,60 @@ pub(crate) fn success_execution_result() -> ExecutionResult {
         effect: ExecutionEffect::default(),
         transfers: vec![],
         cost: 100.into(),
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub(crate) struct EraReport {
+    equivocators: Vec<PublicKey>,
+    rewards: BTreeMap<PublicKey, u64>,
+    inactive_validators: Vec<PublicKey>,
+}
+
+#[derive(Clone, Default, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+pub struct EraEnd {
+    era_report: EraReport,
+    pub next_era_validator_weights: BTreeMap<PublicKey, U512>,
+}
+
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+pub struct MockSwitchBlockHeader {
+    pub parent_hash: BlockHash,
+    pub state_root_hash: Digest,
+    pub body_hash: Digest,
+    pub random_bit: bool,
+    pub accumulated_seed: Digest,
+    pub era_end: Option<EraEnd>,
+    pub timestamp: Timestamp,
+    pub era_id: EraId,
+    pub height: u64,
+    pub protocol_version: ProtocolVersion,
+}
+
+impl MockSwitchBlockHeader {
+    pub fn insert_key_weight(&mut self, key: PublicKey, weight: U512) {
+        let _ = self
+            .era_end
+            .as_mut()
+            .unwrap()
+            .next_era_validator_weights
+            .insert(key, weight);
+    }
+}
+
+impl Default for MockSwitchBlockHeader {
+    fn default() -> Self {
+        Self {
+            parent_hash: Default::default(),
+            state_root_hash: Default::default(),
+            body_hash: Default::default(),
+            random_bit: Default::default(),
+            accumulated_seed: Default::default(),
+            era_end: Some(Default::default()),
+            timestamp: Timestamp::now(),
+            era_id: Default::default(),
+            height: Default::default(),
+            protocol_version: Default::default(),
+        }
     }
 }
