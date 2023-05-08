@@ -11,7 +11,7 @@ use log::error;
 
 use subcommands::{
     archive, check, execution_results_summary, extract_slice, latest_block_summary,
-    purge_signatures, trie_compact, unsparse, Error,
+    purge_signatures, remove_block, trie_compact, unsparse, Error,
 };
 
 const LOGGING: &str = "logging";
@@ -23,6 +23,7 @@ enum DisplayOrder {
     ExtractSlice,
     LatestBlock,
     PurgeSignatures,
+    RemoveBlock,
     TrieCompact,
     Unsparse,
 }
@@ -44,6 +45,7 @@ fn cli() -> Command<'static> {
         .subcommand(purge_signatures::command(
             DisplayOrder::PurgeSignatures as usize,
         ))
+        .subcommand(remove_block::command(DisplayOrder::RemoveBlock as usize))
         .subcommand(trie_compact::command(DisplayOrder::TrieCompact as usize))
         .subcommand(unsparse::command(DisplayOrder::Unsparse as usize))
         .arg(
@@ -92,6 +94,7 @@ fn main() {
             latest_block_summary::run(matches).map_err(Error::from)
         }
         purge_signatures::COMMAND_NAME => purge_signatures::run(matches).map_err(Error::from),
+        remove_block::COMMAND_NAME => remove_block::run(matches).map_err(Error::from),
         trie_compact::COMMAND_NAME => trie_compact::run(matches).map_err(Error::from),
         unsparse::COMMAND_NAME => unsparse::run(matches).map_err(Error::from),
         _ => unreachable!("{} should be handled above", subcommand_name),
