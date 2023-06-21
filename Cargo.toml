@@ -12,6 +12,7 @@ license = "Apache-2.0"
 
 [dependencies]
 anyhow = "1"
+audit = "0.7.2"
 bincode = "1"
 casper-execution-engine = "2"
 casper-hashing = "1"
