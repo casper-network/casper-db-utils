@@ -1,6 +1,6 @@
 [package]
 name = "casper-db-utils"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["George Pisaltu <georgep@casperlabs.io>"]
 edition = "2021"
 description = "Utilities for working with databases of the Casper blockchain."
