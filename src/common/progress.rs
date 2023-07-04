@@ -56,7 +56,7 @@ impl ProgressTracker {
     /// as input.
     pub fn advance_by(&mut self, step: usize) {
         self.processed += step;
-        while self.processed >= (self.total_to_process * self.progress_factor as usize) / STEPS {
+        while self.processed * STEPS >= self.total_to_process * self.progress_factor as usize {
             (*self.log_progress)(self.progress_factor * PROGRESS_MULTIPLIER);
             self.progress_factor += 1;
         }
