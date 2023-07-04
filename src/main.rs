@@ -6,7 +6,7 @@ pub(crate) mod test_utils;
 
 use std::{fs::OpenOptions, process};
 
-use clap::{crate_description, crate_version, Arg, Command};
+use clap::{crate_description, crate_name, crate_version, Arg, Command};
 use log::error;
 
 use subcommands::{
@@ -28,9 +28,18 @@ enum DisplayOrder {
     Unsparse,
 }
 
+const VERSION_STRING: &str = concat!(
+    crate_version!(),
+    "\n",
+    "This version of ",
+    crate_name!(),
+    " is compatible with casper-node version ",
+    env!("CASPER_NODE_VERSION")
+);
+
 fn cli() -> Command<'static> {
     Command::new("casper-db-utils")
-        .version(crate_version!())
+        .version(VERSION_STRING)
         .about(crate_description!())
         .arg_required_else_help(true)
         .subcommand(archive::command(DisplayOrder::Archive as usize))
