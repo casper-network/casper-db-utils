@@ -1,6 +1,6 @@
 [package]
 name = "casper-db-utils"
-version = "0.1.0"
+version = "0.1.0-dev+casper.node.1.4.15"
 authors = ["George Pisaltu <georgep@casperlabs.io>"]
 edition = "2021"
 description = "Utilities for working with databases of the Casper blockchain."
@@ -14,10 +14,10 @@ build = "build.rs"
 [dependencies]
 anyhow = "1"
 bincode = "1"
-casper-execution-engine = "2"
-casper-hashing = "1"
-casper-node = "1"
-casper-types = "1"
+casper-execution-engine = "4"
+casper-hashing = "1.4"
+casper-node = "=1.4.15-alt"
+casper-types = "2"
 clap = { version = "3", features = ["cargo"] }
 futures = "0.3.21"
 lmdb = "0.8.0"
@@ -32,7 +32,7 @@ simplelog = "0.12.0"
 tar = "0.4.38"
 thiserror = "1"
 tokio = { version = "1", features = ["full"] }
-zstd = "0.11.2"
+zstd = "0.12"
 
 [dev-dependencies]
 once_cell = "1"

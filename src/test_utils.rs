@@ -12,9 +12,10 @@ use serde::{Deserialize, Serialize};
 use tempfile::{NamedTempFile, TempDir};
 
 use casper_hashing::Digest;
-use casper_node::types::{BlockHash, DeployHash, DeployMetadata, Timestamp};
+use casper_node::types::{BlockHash, DeployHash, DeployMetadata};
 use casper_types::{
-    EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, U256, U512,
+    EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, Timestamp,
+    U256, U512,
 };
 
 pub(crate) static KEYS: Lazy<Vec<PublicKey>> = Lazy::new(|| {
