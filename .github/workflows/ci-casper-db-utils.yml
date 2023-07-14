@@ -43,7 +43,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: audit
-          args: --deny warnings --ignore RUSTSEC-2022-0001 --ignore RUSTSEC-2020-0071 --ignore RUSTSEC-2021-0139 --ignore RUSTSEC-2022-0061 --ignore RUSTSEC-2021-0145 --ignore RUSTSEC-2021-0146 --ignore RUSTSEC-2022-0041 --ignore RUSTSEC-2020-0168 --ignore RUSTSEC-2022-0092 --ignore RUSTSEC-2023-0034 --ignore RUSTSEC-2023-0044 --ignore RUSTSEC-2023-0045
+          args: --deny warnings --ignore RUSTSEC-2022-0001 --ignore RUSTSEC-2020-0071 --ignore RUSTSEC-2021-0139 --ignore RUSTSEC-2022-0061 --ignore RUSTSEC-2021-0145 --ignore RUSTSEC-2022-0041 --ignore RUSTSEC-2020-0168 --ignore RUSTSEC-2022-0092 --ignore RUSTSEC-2023-0044 --ignore RUSTSEC-2023-0045
 
       - name: Clippy
         uses: actions-rs/cargo@v1

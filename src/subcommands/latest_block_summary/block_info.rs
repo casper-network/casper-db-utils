@@ -8,8 +8,8 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use casper_hashing::Digest;
-use casper_node::types::{BlockHash, BlockHeader, Timestamp};
-use casper_types::{EraId, ProtocolVersion};
+use casper_node::types::{BlockHash, BlockHeader};
+use casper_types::{EraId, ProtocolVersion, Timestamp};
 
 #[cfg(test)]
 use crate::test_utils::MockBlockHeader;
