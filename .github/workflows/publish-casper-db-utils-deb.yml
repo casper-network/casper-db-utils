@@ -22,7 +22,6 @@ jobs:
         with:
           toolchain: stable
           profile: minimal
-          components: rustfmt, clippy
 
       - name: Install deps
         run: |
