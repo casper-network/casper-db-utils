@@ -13,6 +13,10 @@ jobs:
         include:
           - os: ubuntu-20.04
             code_name: focal
+          - os: ubuntu-22.04
+            code_name: jammy
+          - os: ubuntu-24.04
+            code_name: noble
 
     runs-on: ${{ matrix.os }}
 
@@ -23,12 +27,19 @@ jobs:
           toolchain: stable
           profile: minimal
 
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ACCESS_ROLE_REPO }}
+          role-session-name: GitHub_to_AWS_via_FederatedOIDC
+          aws-region: ${{ secrets.AWS_ACCESS_REGION_REPO }}
+
       - name: Install deps
         run: |
           echo "deb http://repo.aptly.info/ squeeze main" | sudo tee -a /etc/apt/sources.list.d/aptly.list
           wget -qO - https://www.aptly.info/pubkey.txt | sudo apt-key add -
           sudo apt-get update
-          sudo apt-get install -y awscli aptly=1.2.0
+          sudo apt-get install -y aptly=1.4.0
           aptly config show
 
       - name: Import GPG key
@@ -52,28 +63,30 @@ jobs:
       - name: Cargo deb
         uses: actions-rs/cargo@v1
         with:
-          command: deb
+          command: deb --no-build --variant ${{ matrix.code_name }}
 
       - name: Upload binaries to repo
         env:
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.APTLY_SECRET_KEY }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.APTLY_ACCESS_KEY }}
-          PLUGIN_REPO_NAME: ${{ secrets.APTLY_REPO }}
-          PLUGIN_REGION: ${{ secrets.APTLY_REGION }}
+          PLUGIN_REPO_NAME: ${{ secrets.AWS_BUCKET_REPO }}
+          PLUGIN_REGION: ${{ secrets.AWS_ACCESS_REGION_REPO }}
           PLUGIN_GPG_KEY: ${{ secrets.APTLY_GPG_KEY }}
           PLUGIN_GPG_PASS: ${{ secrets.APTLY_GPG_PASS }}
-          PLUGIN_ACL: 'public-read'
+          PLUGIN_ACL: 'private'
           PLUGIN_PREFIX: 'releases'
           PLUGIN_DEB_PATH: './target/debian'
           PLUGIN_OS_CODENAME: ${{ matrix.code_name }}
         run: ./ci/publish_deb_to_repo.sh
 
-      - name: Invalidate cloudfront
-        uses: chetan/invalidate-cloudfront-action@v1
-        env:
-          DISTRIBUTION: ${{ secrets.APTLY_DIST_ID }}
-          PATHS: "/*"
-          AWS_REGION: ${{ secrets.APTLY_REGION }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.APTLY_ACCESS_KEY }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.APTLY_SECRET_KEY }}
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation --distribution-id ${{ secrets.AWS_CLOUDFRONT_REPO }} --paths "/*"
+
+      - name: Upload binaries to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: target/debian/casper-db-utils*
+          tag: ${{ github.ref }}
+          overwrite: true
+          file_glob: true
 

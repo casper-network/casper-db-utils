@@ -300,7 +300,7 @@ dependencies = [
 
 [[package]]
 name = "casper-db-utils"
-version = "0.1.0-dev+casper.node.1.4.15"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "bincode",

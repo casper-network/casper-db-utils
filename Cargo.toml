@@ -1,12 +1,12 @@
 [package]
 name = "casper-db-utils"
-version = "0.1.0-dev+casper.node.1.4.15"
-authors = ["George Pisaltu <georgep@casperlabs.io>"]
+version = "0.1.0"
+authors = ["George Pisaltu <georgep@casperlabs.io>", "Joe Sacher <joe.sacher@casper.network>"]
 edition = "2021"
 description = "Utilities for working with databases of the Casper blockchain."
 documentation = "https://docs.rs/casper-db-utils"
 readme = "README.md"
-homepage = "https://casperlabs.io"
+homepage = "https://casper.network"
 repository = "https://github.com/casper-network/casper-db-utils"
 license = "Apache-2.0"
 build = "build.rs"
@@ -41,3 +41,22 @@ tempfile = "3"
 
 [build-dependencies]
 cargo-lock = { version = "9.0", default-features = false }
+
+[package.metadata.deb]
+revision = "0"
+assets = [["./target/release/casper-db-utils", "/usr/bin/casper-db-utils", "755"]]
+extended-description = """
+Package for Casper DB Utils to perform various actions on a Casper-Node database.
+"""
+
+[package.metadata.deb.variants.focal]
+name = "casper-db-utils"
+revision = "0+focal"
+
+[package.metadata.deb.variants.jammy]
+name = "casper-db-utils"
+revision = "0+jammy"
+
+[package.metadata.deb.variants.noble]
+name = "casper-db-utils"
+revision = "0+noble"
