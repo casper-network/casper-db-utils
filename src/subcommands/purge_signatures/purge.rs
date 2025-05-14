@@ -1,21 +1,22 @@
 use std::{
-    collections::{btree_map::Entry, BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, btree_map::Entry},
     path::Path,
+    sync::Arc,
 };
 
-use casper_hashing::Digest;
-use casper_node::types::{BlockHash, BlockHeader};
-use casper_types::{EraId, ProtocolVersion, PublicKey, U512};
-use lmdb::{Cursor, Database, Environment, Error as LmdbError, Transaction, WriteFlags};
+use casper_types::{BlockHash, BlockHeader, EraId, ProtocolVersion, PublicKey, U512};
+use lmdb::{Environment, Transaction};
 use log::{error, info, warn};
 
 use crate::common::{
-    db::{self, BlockHeaderDatabase, BlockMetadataDatabase, Database as _, STORAGE_FILE_NAME},
-    lmdb_utils,
+    db::{
+        self, STORAGE_FILE_NAME, VersionedDatabases,
+        databases::{block_header_database, block_metadata_database},
+    },
     progress::ProgressTracker,
 };
 
-use super::{block_signatures::BlockSignatures, signatures::strip_signatures, Error};
+use super::{Error, signatures::strip_signatures};
 
 /// Structure to hold lookup information for a set of block headers.
 #[derive(Default)]
@@ -46,7 +47,7 @@ impl EraWeights {
     pub(crate) fn refresh_weights_for_era<T: Transaction>(
         &mut self,
         txn: &T,
-        db: Database,
+        db: VersionedDatabases<BlockHash, BlockHeader>,
         indices: &Indices,
         era_id: EraId,
     ) -> Result<bool, Error> {
@@ -60,9 +61,10 @@ impl EraWeights {
             .get(&era_id)
             .ok_or(Error::MissingEraWeights(era_id))?;
         // Deserialize it.
-        let switch_block_header: BlockHeader =
-            bincode::deserialize(txn.get(db, &switch_block_hash)?)
-                .map_err(|bincode_err| Error::HeaderParsing(*switch_block_hash, bincode_err))?;
+        let switch_block_header = match db.get(txn, switch_block_hash)? {
+            Some(block_header) => block_header,
+            None => return Err(Error::MissingBlockHeader(*switch_block_hash)),
+        };
         // Check if this switch block is the last in the era before an upgrade.
         self.era_after_upgrade = indices
             .switch_blocks_before_upgrade
@@ -76,29 +78,19 @@ impl EraWeights {
         self.era_id = era_id;
         Ok(self.era_after_upgrade)
     }
-
-    #[cfg(test)]
-    pub(crate) fn era_id(&self) -> EraId {
-        self.era_id
-    }
-
-    #[cfg(test)]
-    pub(crate) fn weights_mut(&mut self) -> &mut BTreeMap<PublicKey, U512> {
-        &mut self.weights
-    }
 }
 
 /// Creates a collection of indices to store lookup information for a given
 /// list of block heights.
 pub(crate) fn initialize_indices(
-    env: &Environment,
+    env: Arc<Environment>,
     needed_heights: &BTreeSet<u64>,
 ) -> Result<Indices, Error> {
     let mut indices = Indices::default();
     let txn = env.begin_ro_txn()?;
-    let header_db = unsafe { txn.open_db(Some(BlockHeaderDatabase::db_name()))? };
+    let header_db = block_header_database();
 
-    let mut maybe_progress_tracker = match lmdb_utils::entry_count(&txn, header_db).ok() {
+    let mut maybe_progress_tracker = match header_db.entry_count(&txn).ok() {
         Some(entry_count) => Some(
             ProgressTracker::new(
                 entry_count,
@@ -115,54 +107,51 @@ pub(crate) fn initialize_indices(
     {
         let mut last_blocks_before_upgrade: BTreeMap<ProtocolVersion, u64> = BTreeMap::default();
         // Iterate through all block headers.
-        let mut cursor = txn.open_ro_cursor(header_db)?;
-        for (raw_key, raw_value) in cursor.iter() {
+        for maybe_result in header_db.iter_all(&txn).map_err(Error::from)? {
             if let Some(progress_tracker) = maybe_progress_tracker.as_mut() {
                 progress_tracker.advance_by(1);
             }
-            // Deserialize the block hash.
-            let block_hash: BlockHash = match Digest::try_from(raw_key) {
-                Ok(digest) => digest.into(),
-                Err(digest_parsing_err) => {
-                    error!("Skipping block header because of invalid hash {raw_key:?}: {digest_parsing_err}");
-                    continue;
-                }
-            };
-            // Deserialize the header.
-            let block_header: BlockHeader = bincode::deserialize(raw_value)
-                .map_err(|bincode_err| Error::HeaderParsing(block_hash, bincode_err))?;
-            let block_height = block_header.height();
-            // We store all switch block hashes keyed by the era for which they
-            // hold the weights.
-            if block_header.is_switch_block() {
-                let _ = indices
-                    .switch_blocks
-                    .insert(block_header.era_id().successor(), block_hash);
-                // Store the highest switch block height for each protocol
-                // version we encounter.
-                match last_blocks_before_upgrade.entry(block_header.protocol_version()) {
-                    Entry::Vacant(vacant_entry) => {
-                        vacant_entry.insert(block_height);
-                    }
-                    Entry::Occupied(mut occupied_entry) => {
-                        if *occupied_entry.get() < block_height {
-                            occupied_entry.insert(block_height);
+            match maybe_result {
+                Ok((_, block_header)) => {
+                    let block_hash = block_header.block_hash();
+                    let block_height = block_header.height();
+                    // We store all switch block hashes keyed by the era for which they
+                    // hold the weights.
+                    if block_header.is_switch_block() {
+                        let _ = indices
+                            .switch_blocks
+                            .insert(block_header.era_id().successor(), block_hash);
+                        // Store the highest switch block height for each protocol
+                        // version we encounter.
+                        match last_blocks_before_upgrade.entry(block_header.protocol_version()) {
+                            Entry::Vacant(vacant_entry) => {
+                                vacant_entry.insert(block_height);
+                            }
+                            Entry::Occupied(mut occupied_entry) => {
+                                if *occupied_entry.get() < block_height {
+                                    occupied_entry.insert(block_height);
+                                }
+                            }
                         }
                     }
+                    // If this block is on our list, store its hash and header in the
+                    // indices. We store the header to avoid looking it up again in the
+                    // future since we know we will need it and we expect
+                    // `needed_heights` to be a relatively small list.
+                    if needed_heights.contains(&block_height)
+                        && indices
+                            .heights
+                            .insert(block_height, (block_hash, block_header))
+                            .is_some()
+                    {
+                        return Err(Error::DuplicateBlock(block_height));
+                    };
+                }
+                Err(err) => {
+                    error!("Skipping block header because deserialization failed: {err}");
+                    continue;
                 }
             }
-            // If this block is on our list, store its hash and header in the
-            // indices. We store the header to avoid looking it up again in the
-            // future since we know we will need it and we expect
-            // `needed_heights` to be a relatively small list.
-            if needed_heights.contains(&block_height)
-                && indices
-                    .heights
-                    .insert(block_height, (block_hash, block_header))
-                    .is_some()
-            {
-                return Err(Error::DuplicateBlock(block_height));
-            };
         }
         // Remove the entry for the highest known protocol version as it hasn't
         // had an upgrade yet.
@@ -188,15 +177,14 @@ pub(crate) fn initialize_indices(
 /// If this is not possible for that block given its signature set and the era
 /// weights, it is skipped and a message is logged.
 pub(crate) fn purge_signatures_for_blocks(
-    env: &Environment,
+    env: Arc<Environment>,
     indices: &Indices,
     heights_to_visit: BTreeSet<u64>,
     full_purge: bool,
 ) -> Result<(), Error> {
     let mut txn = env.begin_rw_txn()?;
-    let header_db = unsafe { txn.open_db(Some(BlockHeaderDatabase::db_name()))? };
-    let signatures_db = unsafe { txn.open_db(Some(BlockMetadataDatabase::db_name()))? };
-
+    let header_db = block_header_database();
+    let signatures_db = block_metadata_database();
     let mut era_weights = EraWeights::default();
 
     let mut progress_tracker = ProgressTracker::new(
@@ -243,12 +231,10 @@ pub(crate) fn purge_signatures_for_blocks(
         // Make sure we have the correct era weights for this block before
         // trying to strip any signatures.
         let era_after_upgrade =
-            era_weights.refresh_weights_for_era(&txn, header_db, indices, era_id)?;
-
-        let mut block_signatures: BlockSignatures = match txn.get(signatures_db, &block_hash) {
-            Ok(raw_signatures) => bincode::deserialize(raw_signatures)
-                .map_err(|bincode_err| Error::SignaturesParsing(*block_hash, bincode_err))?,
-            Err(LmdbError::NotFound) => {
+            era_weights.refresh_weights_for_era(&txn, header_db.clone(), indices, era_id)?;
+        let block_signatures = match signatures_db.get(&txn, block_hash)? {
+            Some(block_signatures) => block_signatures,
+            None => {
                 // Skip blocks which have no signature entry in the database.
                 warn!(
                     "No signature entry in the database for block \
@@ -257,31 +243,23 @@ pub(crate) fn purge_signatures_for_blocks(
                 progress_tracker.advance_by(1);
                 continue;
             }
-            Err(lmdb_err) => return Err(Error::Database(lmdb_err)),
         };
-
         if full_purge {
             // Delete the record completely from the database.
-            txn.del(signatures_db, &block_hash, None)?;
-        } else if strip_signatures(&mut block_signatures, &era_weights.weights) {
-            if era_after_upgrade {
-                warn!(
-                    "Using possibly inaccurate weights to purge signatures \
-                    for block {block_hash} at height {block_height}"
-                );
-            }
-            // Serialize the remaining signatures and overwrite the database
-            // entry.
-            let serialized_signatures = bincode::serialize(&block_signatures)
-                .map_err(|bincode_err| Error::Serialize(*block_hash, bincode_err))?;
-            txn.put(
-                signatures_db,
-                &block_hash,
-                &serialized_signatures,
-                WriteFlags::default(),
-            )?;
+            signatures_db.del(&mut txn, block_hash)?;
         } else {
-            warn!("Couldn't strip signatures for block {block_hash} at height {block_height}");
+            let maybe_stripped = strip_signatures(block_signatures, &era_weights.weights);
+            if let Some(block_signatures) = maybe_stripped {
+                if era_after_upgrade {
+                    warn!(
+                        "Using possibly inaccurate weights to purge signatures \
+                        for block {block_hash} at height {block_height}"
+                    );
+                }
+                signatures_db.put(&mut txn, *block_hash, block_signatures, true)?;
+            } else {
+                warn!("Couldn't strip signatures for block {block_hash} at height {block_height}");
+            }
         }
         progress_tracker.advance_by(1);
     }
@@ -295,17 +273,17 @@ pub fn purge_signatures<P: AsRef<Path>>(
     no_finality_block_list: BTreeSet<u64>,
 ) -> Result<(), Error> {
     let storage_path = db_path.as_ref().join(STORAGE_FILE_NAME);
-    let env = db::db_env(storage_path)?;
+    let env = Arc::new(db::db_env(storage_path)?);
     let heights_to_visit = weak_finality_block_list
         .union(&no_finality_block_list)
         .copied()
         .collect();
-    let indices = initialize_indices(&env, &heights_to_visit)?;
+    let indices = initialize_indices(env.clone(), &heights_to_visit)?;
     if !weak_finality_block_list.is_empty() {
-        purge_signatures_for_blocks(&env, &indices, weak_finality_block_list, false)?;
+        purge_signatures_for_blocks(env.clone(), &indices, weak_finality_block_list, false)?;
     }
     if !no_finality_block_list.is_empty() {
-        purge_signatures_for_blocks(&env, &indices, no_finality_block_list, true)?;
+        purge_signatures_for_blocks(env.clone(), &indices, no_finality_block_list, true)?;
     }
     Ok(())
 }

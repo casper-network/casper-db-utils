@@ -1,22 +1,17 @@
 use std::time::{Duration, Instant};
 
-use lmdb::{RwTransaction, Transaction};
-use log::{info, warn};
-
-use casper_execution_engine::{
-    core::engine_state::EngineState,
-    storage::{
-        global_state::lmdb::LmdbGlobalState,
-        transaction_source::{Readable, TransactionSource, Writable},
-        trie::{Pointer, Trie},
-        trie_store::lmdb::LmdbTrieStore,
-    },
+use casper_storage::global_state::{
+    state::lmdb::LmdbGlobalState,
+    transaction_source::{Readable, TransactionSource, Writable},
+    trie::Trie,
+    trie_store::lmdb::LmdbTrieStore,
 };
-use casper_hashing::Digest;
 use casper_types::{
+    Digest, Key, Pointer, StoredValue,
     bytesrepr::{self, Bytes, ToBytes},
-    Key, StoredValue,
 };
+use lmdb::{Database, RwTransaction, Transaction};
+use log::{info, warn};
 
 fn memoized_find_missing_descendants(
     value_bytes: Bytes,
@@ -60,10 +55,11 @@ fn find_missing_trie_keys(
     let ptr = match ptr {
         Pointer::LeafPointer(pointer) | Pointer::NodePointer(pointer) => pointer,
     };
-    let existing = txn.read(
-        handle.get_db(),
+    let existing = read(
         &ptr.to_bytes()
             .map_err(|err| anyhow::anyhow!("couldn't serialize trie pointer: {:?}", err))?,
+        txn,
+        handle.get_db(),
     )?;
     if existing.is_none() {
         missing_trie_keys.push(ptr);
@@ -71,10 +67,22 @@ fn find_missing_trie_keys(
     Ok(())
 }
 
+pub fn read(
+    key: &[u8],
+    txn: &RwTransaction<'_>,
+    db: Database,
+) -> Result<Option<Bytes>, lmdb::Error> {
+    match lmdb::Transaction::get(txn, db, &key) {
+        Ok(bytes) => Ok(Some(Bytes::from(bytes))),
+        Err(lmdb::Error::NotFound) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
 pub fn copy_state_root(
     state_root: Digest,
-    source: &EngineState<LmdbGlobalState>,
-    destination: &EngineState<LmdbGlobalState>,
+    source: &LmdbGlobalState,
+    destination: &LmdbGlobalState,
 ) -> Result<(), anyhow::Error> {
     let mut missing_trie_keys = vec![state_root];
     let start_time = Instant::now();
@@ -95,17 +103,14 @@ pub fn copy_state_root(
             heartbeat_interval = Instant::now();
         }
 
-        let source_store = source.get_state().trie_store();
-        let destination_store = destination.get_state().trie_store();
+        let source_store = source.trie_store();
+        let destination_store = destination.trie_store();
         let trie_key_bytes = next_trie_key
             .to_bytes()
             .map_err(|err| anyhow::anyhow!("couldn't serialize trie key: {:?}", err))?;
 
-        let read_txn = source.get_state().environment().create_read_txn()?;
-        let mut write_txn = destination
-            .get_state()
-            .environment()
-            .create_read_write_txn()?;
+        let read_txn = source.environment().create_read_txn()?;
+        let mut write_txn = destination.environment().create_read_write_txn()?;
 
         match read_txn.read(source_store.get_db(), &trie_key_bytes)? {
             Some(value_bytes) => {

@@ -1,9 +1,8 @@
 use std::path::Path;
 
-use casper_hashing::Digest;
-use casper_node::types::BlockHash;
+use casper_types::{BlockHash, Digest};
 
-use super::{global_state, storage, Error};
+use super::{Error, global_state, storage};
 
 pub enum SliceIdentifier {
     BlockHash(BlockHash),

@@ -1,9 +1,10 @@
-use lmdb::{Database as LmdbDatabase, Environment, Transaction, WriteFlags};
-use rand::{self, prelude::ThreadRng, Rng, RngCore};
-use serde::{Deserialize, Serialize};
-
-use super::{Database, DeserializationError};
+use crate::common::db::MockData;
+use crate::common::db::{databases::mock_database, versioned_database::VersionedDatabases};
 use crate::test_utils::LmdbTestFixture;
+use casper_types::TransactionHash;
+use lmdb::{Environment, Transaction};
+use rand::{self, Rng, RngCore, prelude::ThreadRng};
+use serde::{Deserialize, Serialize};
 
 fn gen_bytes(rng: &mut ThreadRng) -> Vec<u8> {
     let mock = MockStruct::random(rng);
@@ -15,21 +16,22 @@ fn gen_faulty_bytes(rng: &mut ThreadRng) -> Vec<u8> {
     bincode::serialize(&mock).unwrap()
 }
 
-fn populate_db(env: &Environment, db: &LmdbDatabase) {
-    let mut rng = rand::thread_rng();
-    let entry_count = rng.gen_range(10u32..100u32);
+fn populate_db(env: &Environment, db: &VersionedDatabases<TransactionHash, MockData>) {
+    let mut rng = rand::rng();
+    let entry_count = rng.random_range(10u32..100u32);
     let mut rw_tx = env.begin_rw_txn().expect("couldn't begin rw transaction");
-    for i in 0..entry_count {
-        let bytes = gen_bytes(&mut rng);
-        let key: [u8; 4] = i.to_le_bytes();
-        rw_tx.put(*db, &key, &bytes, WriteFlags::empty()).unwrap();
+    for _ in 0..entry_count {
+        let (key, data) = MockData::random(&mut rng);
+        let put_legacy_to_legacy_db = rng.random_bool(0.5);
+        db.put(&mut rw_tx, key, data, put_legacy_to_legacy_db)
+            .unwrap();
     }
     rw_tx.commit().unwrap();
 }
 
-fn populate_faulty_db(env: &Environment, db: &LmdbDatabase) {
-    let mut rng = rand::thread_rng();
-    let entry_count = rng.gen_range(10u32..100u32);
+fn populate_faulty_db(env: &Environment, db: &VersionedDatabases<TransactionHash, MockData>) {
+    let mut rng = rand::rng();
+    let entry_count = rng.random_range(10u32..100u32);
     let mut rw_tx = env.begin_rw_txn().expect("couldn't begin rw transaction");
     for i in 0..entry_count {
         let bytes = if i % 5 == 0 {
@@ -38,7 +40,9 @@ fn populate_faulty_db(env: &Environment, db: &LmdbDatabase) {
             gen_bytes(&mut rng)
         };
         let key: [u8; 4] = i.to_le_bytes();
-        rw_tx.put(*db, &key, &bytes, WriteFlags::empty()).unwrap();
+        let put_to_legacy = rng.random_bool(0.5);
+        db.put_raw(&mut rw_tx, key.to_vec(), bytes, put_to_legacy)
+            .unwrap();
     }
     rw_tx.commit().unwrap();
 }
@@ -51,7 +55,7 @@ enum MockEnum {
 
 impl MockEnum {
     fn random(rng: &mut ThreadRng) -> Self {
-        if rng.gen::<u32>() % 2 == 0 {
+        if rng.random::<u32>() % 2 == 0 {
             Self::A
         } else {
             let mut buf = [0u8; 32];
@@ -70,11 +74,11 @@ struct MockStruct {
 
 impl MockStruct {
     fn random(rng: &mut ThreadRng) -> Self {
-        let s = format!("test_string_{}", rng.gen::<u64>());
+        let s = format!("test_string_{}", rng.random::<u64>());
         Self {
-            a: rng.gen::<u32>(),
+            a: rng.random::<u32>(),
             b: s,
-            c: if rng.gen::<u32>() % 2 == 0 {
+            c: if rng.random::<u32>() % 2 == 0 {
                 Some(MockEnum::random(rng))
             } else {
                 None
@@ -93,16 +97,16 @@ struct FaultyMockStruct {
 
 impl FaultyMockStruct {
     fn random(rng: &mut ThreadRng) -> Self {
-        let s = format!("test_string_{}", rng.gen::<u64>());
+        let s = format!("test_string_{}", rng.random::<u64>());
         Self {
-            a: rng.gen::<u32>(),
-            d: if rng.gen::<u32>() % 2 == 0 {
-                Some(rng.gen::<u32>())
+            a: rng.random::<u32>(),
+            d: if rng.random::<u32>() % 2 == 0 {
+                Some(rng.random::<u32>())
             } else {
                 None
             },
             b: s,
-            c: if rng.gen::<u32>() % 2 == 0 {
+            c: if rng.random::<u32>() % 2 == 0 {
                 Some(MockEnum::random(rng))
             } else {
                 None
@@ -111,22 +115,9 @@ impl FaultyMockStruct {
     }
 }
 
-struct MockDb {}
-
-impl Database for MockDb {
-    fn db_name() -> &'static str {
-        "test_db"
-    }
-
-    fn parse_element(bytes: &[u8]) -> Result<(), DeserializationError> {
-        bincode::deserialize::<MockStruct>(bytes)?;
-        Ok(())
-    }
-}
-
 #[test]
 fn sanity_check_ser_deser() {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let original = MockStruct::random(&mut rng);
     let ser = bincode::serialize(&original).expect("couldn't serialize");
     let _deser: MockStruct = bincode::deserialize(&ser).expect("couldn't deserialize");
@@ -141,22 +132,28 @@ fn sanity_check_ser_deser() {
 
 #[test]
 fn good_db_should_pass_check() {
-    let fixture = LmdbTestFixture::new(vec![MockDb::db_name()], None);
-    populate_db(&fixture.env, fixture.db(Some(MockDb::db_name())).unwrap());
+    let fixture = LmdbTestFixture::new(None);
+    let db = mock_database();
+    let env = fixture.env.clone();
+    db.create(env.clone()).unwrap();
+    populate_db(&fixture.env, &db);
 
-    assert!(MockDb::check_db(&fixture.env, true, 0).is_ok());
-    assert!(MockDb::check_db(&fixture.env, false, 0).is_ok());
-    assert!(MockDb::check_db(&fixture.env, true, 4).is_ok());
-    assert!(MockDb::check_db(&fixture.env, false, 4).is_ok());
+    assert!(db.check_dbs(env.clone(), 0, true).is_ok());
+    assert!(db.check_dbs(env.clone(), 0, false).is_ok());
+    assert!(db.check_dbs(env.clone(), 4, true).is_ok());
+    assert!(db.check_dbs(env.clone(), 4, false).is_ok());
 }
 
 #[test]
 fn bad_db_should_fail_check() {
-    let fixture = LmdbTestFixture::new(vec![MockDb::db_name()], None);
-    populate_faulty_db(&fixture.env, fixture.db(Some(MockDb::db_name())).unwrap());
+    let fixture = LmdbTestFixture::new(None);
+    let db = mock_database();
+    let env = fixture.env.clone();
+    db.create(env.clone()).unwrap();
+    populate_faulty_db(&fixture.env, &db);
 
-    assert!(MockDb::check_db(&fixture.env, true, 0).is_err());
-    assert!(MockDb::check_db(&fixture.env, false, 0).is_err());
-    assert!(MockDb::check_db(&fixture.env, true, 4).is_err());
-    assert!(MockDb::check_db(&fixture.env, false, 4).is_err());
+    assert!(db.check_dbs(env.clone(), 0, true).is_err());
+    assert!(db.check_dbs(env.clone(), 0, false).is_err());
+    assert!(db.check_dbs(env.clone(), 4, true).is_err());
+    assert!(db.check_dbs(env.clone(), 4, false).is_err());
 }

@@ -2,17 +2,18 @@ use std::{
     collections::HashSet,
     fs::{self, File, OpenOptions},
     path::Path,
+    sync::Arc,
 };
 
+use casper_types::Digest;
+use lmdb::{Environment, EnvironmentFlags};
 use log::info;
 
-use casper_hashing::Digest;
-
-use crate::common::db::TRIE_STORE_FILE_NAME;
+use crate::common::db::{TRIE_STORE_FILE_NAME, blocks_index::BlocksIndex};
 
 use super::{
-    utils::{create_execution_engine, create_storage, load_execution_engine},
     Error,
+    utils::{create_execution_engine, load_execution_engine},
 };
 
 /// Defines behavior for opening destination trie store.
@@ -149,16 +150,24 @@ pub fn trie_compact<P1: AsRef<Path>, P2: AsRef<Path>, P3: AsRef<Path>>(
         create_execution_engine(destination_trie_path, max_db_size, true)
             .map_err(Error::CreateDestTrie)?;
 
-    // Create a separate lmdb for block/deploy storage at chain_download_path.
-    let storage = create_storage(&storage_path).map_err(Error::OpenStorage)?;
+    let env = Arc::new(
+        Environment::new()
+            .set_flags(
+                EnvironmentFlags::NO_SUB_DIR
+                    | EnvironmentFlags::NO_TLS
+                    | EnvironmentFlags::NO_READAHEAD,
+            )
+            .set_max_dbs(100)
+            .open(storage_path.as_ref())
+            .map_err(Error::LmdbOperation)?,
+    );
+    let mut index = BlocksIndex::new(env.clone());
+    index.initialize().map_err(Error::DbLayer)?;
 
-    let mut block = match storage
-        .read_highest_block()
-        .map_err(|err| Error::Storage(0, err))?
-    {
-        Some(block) => block,
+    let mut block_header = match index.heighest_block_header()? {
+        Some(header) => header,
         None => {
-            info!("No blocks found in storage, exiting.");
+            info!("No headers found in storage, exiting.");
             return Ok(());
         }
     };
@@ -167,22 +176,23 @@ pub fn trie_compact<P1: AsRef<Path>, P2: AsRef<Path>, P3: AsRef<Path>>(
 
     info!("Copying state roots from source to destination.");
     loop {
-        block_height = block.height();
-        let state_root = *block.take_header().state_root_hash();
+        block_height = block_header.height();
+        let state_root = *block_header.state_root_hash();
         if !visited_roots.contains(&state_root) {
             super::helpers::copy_state_root(state_root, &source_state, &destination_state)
                 .map_err(|err| Error::CopyStateRoot(state_root, err))?;
-            destination_state
-                .flush_environment()
-                .map_err(Error::LmdbOperation)?;
+            let dest_env = destination_state.environment();
+            if dest_env.is_manual_sync_enabled() {
+                dest_env.sync().map_err(Error::LmdbOperation)?;
+            }
             visited_roots.insert(state_root);
         }
         if block_height == 0 {
             break;
         }
-        block = storage
-            .read_block_by_height(block_height - 1)
-            .map_err(|storage_err| Error::Storage(block_height - 1, storage_err))?
+        block_header = index
+            .read_block_header_by_height(block_height - 1)
+            .map_err(Error::DbLayer)?
             .ok_or(Error::MissingBlock(block_height - 1))?;
     }
     info!(

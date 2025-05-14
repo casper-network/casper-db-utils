@@ -1,10 +1,10 @@
 use std::{path::Path, result::Result};
 
-use casper_hashing::Digest;
+use casper_types::Digest;
 use log::info;
 
 use crate::subcommands::trie_compact::{
-    copy_state_root, create_execution_engine, load_execution_engine, DEFAULT_MAX_DB_SIZE,
+    DEFAULT_MAX_DB_SIZE, copy_state_root, create_execution_engine, load_execution_engine,
 };
 
 use super::Error;
@@ -31,7 +31,9 @@ pub(crate) fn transfer_global_state<P1: AsRef<Path>, P2: AsRef<Path>>(
     // store.
     copy_state_root(state_root_hash, &source_state, &destination_state)
         .map_err(Error::StateRootTransfer)?;
-    destination_state.flush_environment()?;
-
+    let dest_env = destination_state.environment();
+    if dest_env.is_manual_sync_enabled() {
+        dest_env.sync()?;
+    }
     Ok(())
 }
