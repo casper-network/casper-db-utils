@@ -11,14 +11,14 @@ use casper_types::{BlockHash, BlockHeader, Digest, EraId, ProtocolVersion, Times
 
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 pub struct BlockInfo {
-    network_name: Option<String>,
-    block_hash: BlockHash,
-    body_hash: Digest,
-    era_id: EraId,
-    height: u64,
-    protocol_version: ProtocolVersion,
-    state_root_hash: Digest,
-    timestamp: Timestamp,
+    pub(super) network_name: Option<String>,
+    pub(super) block_hash: BlockHash,
+    pub(super) body_hash: Digest,
+    pub(super) era_id: EraId,
+    pub(super) height: u64,
+    pub(super) protocol_version: ProtocolVersion,
+    pub(super) state_root_hash: Digest,
+    pub(super) timestamp: Timestamp,
 }
 
 impl BlockInfo {

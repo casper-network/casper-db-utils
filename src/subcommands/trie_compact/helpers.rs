@@ -1,10 +1,13 @@
 use std::time::{Duration, Instant};
 
-use casper_storage::global_state::{
-    state::lmdb::LmdbGlobalState,
-    transaction_source::{Readable, TransactionSource, Writable},
-    trie::Trie,
-    trie_store::lmdb::LmdbTrieStore,
+use casper_storage::{
+    data_access_layer::DataAccessLayer,
+    global_state::{
+        state::lmdb::LmdbGlobalState,
+        transaction_source::{Readable, TransactionSource, Writable},
+        trie::Trie,
+        trie_store::lmdb::LmdbTrieStore,
+    },
 };
 use casper_types::{
     Digest, Key, Pointer, StoredValue,
@@ -81,8 +84,8 @@ pub fn read(
 
 pub fn copy_state_root(
     state_root: Digest,
-    source: &LmdbGlobalState,
-    destination: &LmdbGlobalState,
+    source: &DataAccessLayer<LmdbGlobalState>,
+    destination: &DataAccessLayer<LmdbGlobalState>,
 ) -> Result<(), anyhow::Error> {
     let mut missing_trie_keys = vec![state_root];
     let start_time = Instant::now();
@@ -97,20 +100,19 @@ pub fn copy_state_root(
         // For user feedback, update on progress if this takes longer than 10 seconds.
         if heartbeat_interval.elapsed().as_secs() > 10 {
             info!(
-                "trie migration progress: bytes copied {}, tries copied {}",
-                total_bytes, total_tries,
+                "trie migration progress: bytes copied {total_bytes}, tries copied {total_tries}",
             );
             heartbeat_interval = Instant::now();
         }
 
-        let source_store = source.trie_store();
-        let destination_store = destination.trie_store();
+        let source_store = source.state().trie_store();
+        let destination_store = destination.state().trie_store();
         let trie_key_bytes = next_trie_key
             .to_bytes()
             .map_err(|err| anyhow::anyhow!("couldn't serialize trie key: {:?}", err))?;
 
-        let read_txn = source.environment().create_read_txn()?;
-        let mut write_txn = destination.environment().create_read_write_txn()?;
+        let read_txn = source.state().environment().create_read_txn()?;
+        let mut write_txn = destination.state().environment().create_read_write_txn()?;
 
         match read_txn.read(source_store.get_db(), &trie_key_bytes)? {
             Some(value_bytes) => {

@@ -9,14 +9,15 @@ mod utils;
 use std::{io::Error as IoError, path::PathBuf};
 
 use anyhow::Error as AnyError;
+use casper_storage::block_store::BlockStoreError;
+use casper_storage::global_state::error::Error as GlobalStateError;
 use casper_types::Digest;
 use clap::ArgMatches;
-use lmdb::Error as LmdbError;
 use thiserror::Error as ThisError;
 
 use compact::DestinationOptions;
 pub use helpers::copy_state_root;
-pub use utils::{create_execution_engine, load_execution_engine};
+pub use utils::{create_data_access_layer, load_data_access_layer};
 
 pub const COMMAND_NAME: &str = "compact-trie";
 const APPEND: &str = "append";
@@ -42,17 +43,19 @@ pub enum Error {
     /// Path cannot be created/resolved.
     #[error("Path {0} cannot be created/resolved: {1}")]
     InvalidPath(PathBuf, IoError),
-    /// Error while operating on LMDB.
-    #[error("Error while operating on LMDB: {0}")]
-    LmdbOperation(LmdbError),
     /// A block of specific height is missing from the storage.
     #[error("Storage database is missing block {0}")]
     MissingBlock(u64),
-    /// Error creating the execution engine for the source trie.
-    #[error("Error creating the execution engine: {0}")]
-    OpenSourceTrie(AnyError),
     #[error("Error when accessing the database layer: {0}")]
     DbLayer(#[from] crate::common::db::Error),
+    #[error("Error while operating on the global state: {0}")]
+    GlobalState(GlobalStateError),
+    #[error("Error opening the block/deploy storage: {0}")]
+    OpenStorage(BlockStoreError),
+    #[error("Storage error while trying to retrieve block {0}: {1}")]
+    Storage(u64, BlockStoreError),
+    #[error("Error loading the source execution engine: {0}")]
+    LoadExecutionEngine(anyhow::Error),
 }
 
 pub fn run(matches: &ArgMatches) -> Result<(), Error> {
@@ -77,5 +80,7 @@ pub fn run(matches: &ArgMatches) -> Result<(), Error> {
         destination_trie_path,
         dest_opt,
         max_db_size,
+        //#TODO add argument to steer `enable_addressable_entity` - currently the node doesnt use this feature
+        false,
     )
 }

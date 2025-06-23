@@ -39,13 +39,12 @@ fn get_highest_block(
     if log_progress {
         match ProgressTracker::new(
             entry_count,
-            Box::new(|completion| info!("Database parsing {}% complete...", completion)),
+            Box::new(|completion| info!("Database parsing {completion}% complete...")),
         ) {
             Ok(progress_tracker) => maybe_progress_tracker = Some(progress_tracker),
-            Err(progress_tracker_error) => warn!(
-                "Couldn't initialize progress tracker: {}",
-                progress_tracker_error
-            ),
+            Err(progress_tracker_error) => {
+                warn!("Couldn't initialize progress tracker: {progress_tracker_error}")
+            }
         }
     }
 
@@ -90,6 +89,7 @@ pub fn latest_block_summary<P1: AsRef<Path>, P2: AsRef<Path>>(
     let out_writer: Box<dyn Write> = if let Some(out_path) = output {
         let file = OpenOptions::new()
             .create_new(!overwrite)
+            .truncate(overwrite)
             .write(true)
             .open(out_path)?;
         log_progress = true;
@@ -100,7 +100,7 @@ pub fn latest_block_summary<P1: AsRef<Path>, P2: AsRef<Path>>(
     let network_name = match parse_network_name(db_path) {
         Ok(name) => Some(name),
         Err(io_err) => {
-            warn!("Couldn't derive network name from path: {}", io_err);
+            warn!("Couldn't derive network name from path: {io_err}");
             None
         }
     };

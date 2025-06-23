@@ -1,5 +1,5 @@
 use crate::common::{
-    db::Error,
+    db::{DeserializationError, Error},
     structs::{ApprovalsHashes, DeployMetadataV1, LegacyApprovalsHashes, Transfers},
 };
 use casper_types::{
@@ -35,7 +35,7 @@ pub(crate) use tests::MockData;
 /// occurrence though.
 #[derive(Eq, PartialEq, Debug, Clone)]
 pub(crate) struct VersionedDatabases<K, V> {
-    legacy_database_name: String,
+    pub legacy_database_name: String,
     current_database_name: String,
     _phantom: PhantomData<(K, V)>,
 }
@@ -250,7 +250,6 @@ where
         let source_current_db = unsafe { source_txn.open_db(Some(&self.current_database_name))? };
         let destination_current_db =
             unsafe { destination_txn.open_db(Some(&other_db.current_database_name))? };
-
         let source_legacy_db = unsafe { source_txn.open_db(Some(&self.legacy_database_name))? };
         let destination_legacy_db =
             unsafe { destination_txn.open_db(Some(&other_db.legacy_database_name))? };
@@ -282,7 +281,9 @@ where
                                 Err(e) => return Err(Error::Database(e)),
                             };
                         }
-                        Err(e) => return Err(Error::Database(e)),
+                        Err(e) => {
+                            return Err(Error::Database(e));
+                        }
                     }
                 }
                 Err(e) => return Err(Error::Database(e)),
@@ -343,7 +344,7 @@ where
             //Just looping here
             x += 1;
             if x % ENTRY_LOG_INTERVAL == 0 {
-                info!("Parsed {} entries...", x);
+                info!("Parsed {x} entries...");
             }
 
             Ok(())
@@ -361,7 +362,7 @@ where
             //Just looping here
             x += 1;
             if x % ENTRY_LOG_INTERVAL == 0 {
-                info!("Parsed {} entries...", x);
+                info!("Parsed {x} entries...");
             }
 
             Ok(())
@@ -398,6 +399,7 @@ where
                 let legacy_key = key.legacy_key().unwrap();
                 let legacy_db = unsafe { txn.open_db(Some(&self.legacy_database_name))? };
                 let raw_data = serialize(&legacy_value)?;
+
                 match txn.put(legacy_db, legacy_key, &raw_data, WriteFlags::default()) {
                     Ok(_) => return Ok(true),
                     Err(e) => return Err(Error::Database(e)),
@@ -421,6 +423,14 @@ pub(crate) enum VersionedDatabasesIterator<'txn, K, V> {
         versioned_database: &'txn VersionedDatabases<K, V>,
     },
     CurrentIterator {
+        // We need to keep cursor here since not keeping this
+        // will cause it to get dropped and some internal data
+        // of the transaction (and iterator) is internally bound
+        // to the memory of the cursor (inside the lmdb-rkv library).
+        // Removing this will cause random "SIGSEGV: invalid memory reference)"
+        // errors.
+        _cursor: RoCursor<'txn>,
+        _inner_transaction: &'txn RoTransaction<'txn>,
         iter: Iter<'txn>,
     },
 }
@@ -446,7 +456,11 @@ where
                             match iter.next() {
                                 None | Some(Err(lmdb::Error::NotFound)) => None,
                                 Some(Ok((raw_key, raw_value))) => {
-                                    *self = VersionedDatabasesIterator::CurrentIterator { iter };
+                                    *self = VersionedDatabasesIterator::CurrentIterator {
+                                        _cursor: cursor,
+                                        _inner_transaction: inner_transaction,
+                                        iter,
+                                    };
                                     let maybe_value: Result<V, Error> =
                                         deserialize_bytesrepr(raw_value);
                                     Some(maybe_value.map(|v| (raw_key.into(), v)))
@@ -464,7 +478,7 @@ where
                 }
                 Some(Err(e)) => Some(Err(Error::Database(e))),
             },
-            VersionedDatabasesIterator::CurrentIterator { iter } => match iter.next() {
+            VersionedDatabasesIterator::CurrentIterator { iter, .. } => match iter.next() {
                 Some(Ok((raw_key, raw_value))) => {
                     let maybe_value: Result<V, Error> = deserialize_bytesrepr(raw_value);
                     Some(maybe_value.map(|v| (raw_key.into(), v)))
@@ -477,7 +491,7 @@ where
 }
 
 #[inline(always)]
-fn serialize_bytesrepr<T: ToBytes>(value: &T) -> Result<Vec<u8>, Error> {
+pub(crate) fn serialize_bytesrepr<T: ToBytes>(value: &T) -> Result<Vec<u8>, Error> {
     value.to_bytes().map_err(Error::Bytesrepr)
 }
 
@@ -511,8 +525,12 @@ pub(crate) fn deserialize_bytesrepr<T: FromBytes + 'static>(raw: &[u8]) -> Resul
                     format!("{:?}", TypeId::of::<T>())
                 }
             };
-            error!("deserialize_bytesrepr failed to deserialize: {}", type_name);
-            Err(Error::Bytesrepr(err))
+            error!("deserialize_bytesrepr failed to deserialize: {type_name}");
+            let size = raw.len();
+            Err(Error::Parsing(
+                size,
+                DeserializationError::BytesreprError(err),
+            ))
         }
     }
 }
@@ -522,7 +540,13 @@ pub(crate) fn deserialize_bytesrepr<T: FromBytes + 'static>(raw: &[u8]) -> Resul
 pub(crate) fn deserialize<T: DeserializeOwned + 'static>(raw: &[u8]) -> Result<T, Error> {
     match bincode::deserialize(raw) {
         Ok(value) => Ok(value),
-        Err(err) => Err(Error::Bincode(err)),
+        Err(err) => {
+            let size = raw.len();
+            Err(Error::Parsing(
+                size,
+                DeserializationError::BincodeError(err),
+            ))
+        }
     }
 }
 
@@ -606,12 +630,44 @@ impl VersionedValue for BlockSignatures {
     type Legacy = BlockSignaturesV1;
 }
 
+impl UpsertableValue for Transaction {
+    type Legacy = Deploy;
+
+    fn legacy_value(&self) -> Option<Self::Legacy> {
+        match self {
+            Transaction::Deploy(deploy) => Some(deploy.clone()),
+            Transaction::V1(_) => None,
+        }
+    }
+}
 impl UpsertableValue for BlockSignatures {
     type Legacy = BlockSignaturesV1;
     fn legacy_value(&self) -> Option<Self::Legacy> {
         match self {
             BlockSignatures::V1(block_signatures_v1) => Some(block_signatures_v1.clone()),
             BlockSignatures::V2(_) => None,
+        }
+    }
+}
+
+impl UpsertableValue for BlockHeader {
+    type Legacy = BlockHeaderV1;
+
+    fn legacy_value(&self) -> Option<Self::Legacy> {
+        match self {
+            BlockHeader::V1(block_header_v1) => Some(block_header_v1.clone()),
+            BlockHeader::V2(_) => None,
+        }
+    }
+}
+
+impl UpsertableValue for BlockBody {
+    type Legacy = BlockBodyV1;
+
+    fn legacy_value(&self) -> Option<Self::Legacy> {
+        match self {
+            BlockBody::V1(block_body_v1) => Some(block_body_v1.clone()),
+            BlockBody::V2(_) => None,
         }
     }
 }
@@ -627,14 +683,15 @@ mod tests {
     use casper_types::{
         DeployHash, TransactionHash, TransactionV1Hash,
         bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+        testing::TestRng,
     };
     use lmdb::Transaction;
-    use rand::{Rng, RngCore, distr::Alphanumeric, rngs::ThreadRng};
+    use rand::{Rng, RngCore};
     use serde::{Deserialize, Serialize};
 
     #[test]
     fn db_entry_count() {
-        let mut rng = rand::rng();
+        let mut rng = TestRng::new();
         let fixture = LmdbTestFixture::new(None);
         let env = &fixture.env;
         let db = mock_database();
@@ -647,7 +704,7 @@ mod tests {
 
         // Insert the first entry into the database.
         let mut txn = env.begin_rw_txn().unwrap();
-        let (key, data) = MockData::random(&mut rng);
+        let (key, data) = MockData::random_current(&mut rng);
         let first_key = key;
         db.put(&mut txn, key, data, true).unwrap();
         txn.commit().unwrap();
@@ -659,7 +716,7 @@ mod tests {
 
         // Insert the second entry into the database.
         if let Ok(mut txn) = env.begin_rw_txn() {
-            let (key, data) = MockData::random(&mut rng);
+            let (key, data) = MockData::random_legacy(&mut rng);
             db.put(&mut txn, key, data, true).unwrap();
             txn.commit().unwrap();
         };
@@ -715,26 +772,32 @@ mod tests {
     }
 
     impl MockData {
-        pub(crate) fn random(rng: &mut ThreadRng) -> (TransactionHash, MockData) {
+        pub(crate) fn random(rng: &mut TestRng) -> (TransactionHash, MockData) {
             let mut key_bytes = [0u8; 32];
             rng.fill_bytes(&mut key_bytes);
-            if rng.random_bool(0.5) {
-                let rand_string: String = rng
-                    .sample_iter(&Alphanumeric)
-                    .take(30) // specify the length of the string
-                    .map(char::from)
-                    .collect();
-                (
-                    TransactionHash::V1(TransactionV1Hash::from_raw(key_bytes)),
-                    MockData::Current(rand_string),
-                )
+            if rng.gen_bool(0.5) {
+                Self::random_current(rng)
             } else {
-                let rand_u32 = rng.next_u32();
-                (
-                    TransactionHash::Deploy(DeployHash::from_raw(key_bytes)),
-                    MockData::Legacy(MockLegacyStruct { x: rand_u32 }),
-                )
+                Self::random_legacy(rng)
             }
+        }
+
+        pub(crate) fn random_current(rng: &mut TestRng) -> (TransactionHash, MockData) {
+            let key_bytes: [u8; 32] = rng.r#gen();
+            let rand_string = rng.random_string(25..35);
+            (
+                TransactionHash::V1(TransactionV1Hash::from_raw(key_bytes)),
+                MockData::Current(rand_string),
+            )
+        }
+
+        pub(crate) fn random_legacy(rng: &mut TestRng) -> (TransactionHash, MockData) {
+            let key_bytes: [u8; 32] = rng.r#gen();
+            let rand_u32 = rng.next_u32();
+            (
+                TransactionHash::Deploy(DeployHash::from_raw(key_bytes)),
+                MockData::Legacy(MockLegacyStruct { x: rand_u32 }),
+            )
         }
     }
 

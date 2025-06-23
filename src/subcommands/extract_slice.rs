@@ -7,6 +7,7 @@ mod tests;
 use std::{io::Error as IoError, path::Path};
 
 use bincode::Error as BincodeError;
+use casper_storage::global_state::error::Error as GlobalStateError;
 use casper_types::{BlockHash, Digest};
 use clap::{Arg, ArgMatches, Command};
 use lmdb::Error as LmdbError;
@@ -37,6 +38,8 @@ pub enum Error {
     StateRootTransfer(anyhow::Error),
     #[error("Error when accessing database layer: {0}")]
     DatabaseLayer(#[from] crate::common::db::Error),
+    #[error("Error when manipulating global state: {0}")]
+    GlobalState(GlobalStateError),
 }
 
 enum DisplayOrder {
@@ -130,5 +133,6 @@ pub fn run(matches: &ArgMatches) -> Result<(), Error> {
                 .expect("should have either BLOCK_HASH or STATE_ROOT_HASH arg")
         });
 
-    extract::extract_slice(path, output, slice_identifier)
+    //#TODO add argument to steer `enable_addressable_entity` - currently the node doesnt use this feature
+    extract::extract_slice(path, output, slice_identifier, false)
 }

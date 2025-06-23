@@ -25,8 +25,7 @@ pub(super) fn strip_signatures(
 ) -> Option<BlockSignatures> {
     // Calculate the total weight.
     let total_weight: U512 = weights
-        .iter()
-        .map(|(_, weight)| weight)
+        .values()
         .fold(U512::zero(), |acc, weight| acc + *weight);
 
     // Store the signature keys sorted by their respective weight.
@@ -108,12 +107,14 @@ pub(super) fn strip_signatures(
     Some(trimmed_signatures)
 }
 
-/* TODO align these tests
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
 
-    use casper_types::{BlockSignatures, PublicKey, Signature, U512};
+    use casper_types::{
+        BlockHash, BlockSignatures, BlockSignaturesV2, ChainNameDigest, EraId, PublicKey,
+        Signature, U512,
+    };
 
     use crate::{
         subcommands::purge_signatures::signatures::{
@@ -150,20 +151,12 @@ mod tests {
 
     #[test]
     fn strip_signatures_progressive() {
-        let mut block_signatures = BlockSignatures::default();
+        let mut block_signatures = build_block_signatures_v2();
         // Create signatures for keys [1..4].
-        block_signatures
-            .proofs
-            .insert(KEYS[0].clone(), Signature::System);
-        block_signatures
-            .proofs
-            .insert(KEYS[1].clone(), Signature::System);
-        block_signatures
-            .proofs
-            .insert(KEYS[2].clone(), Signature::System);
-        block_signatures
-            .proofs
-            .insert(KEYS[3].clone(), Signature::System);
+        block_signatures.insert_signature(KEYS[0].clone(), Signature::System);
+        block_signatures.insert_signature(KEYS[1].clone(), Signature::System);
+        block_signatures.insert_signature(KEYS[2].clone(), Signature::System);
+        block_signatures.insert_signature(KEYS[3].clone(), Signature::System);
 
         let mut weights: BTreeMap<PublicKey, U512> = BTreeMap::default();
         // Add weights for keys [1..4].
@@ -172,53 +165,44 @@ mod tests {
         weights.insert(KEYS[2].clone(), 300.into());
         weights.insert(KEYS[3].clone(), 400.into());
 
-        assert!(strip_signatures(&mut block_signatures, &weights));
+        let signatures_after_strip =
+            strip_signatures(BlockSignatures::V2(block_signatures.clone()), &weights).unwrap();
         // Signatures from keys [1..3] have a cumulative weight of 600/1000,
         // so signature from key 4 should have been purged.
-        assert!(block_signatures.proofs.contains_key(&KEYS[0]));
-        assert!(block_signatures.proofs.contains_key(&KEYS[1]));
-        assert!(block_signatures.proofs.contains_key(&KEYS[2]));
-        assert!(!block_signatures.proofs.contains_key(&KEYS[3]));
+        let block_signers: Vec<PublicKey> = signatures_after_strip.signers().cloned().collect();
+        assert!(block_signers.contains(&KEYS[0]));
+        assert!(block_signers.contains(&KEYS[1]));
+        assert!(block_signers.contains(&KEYS[2]));
+        assert!(!block_signers.contains(&KEYS[3]));
     }
 
     #[test]
     fn strip_signatures_equal_weights() {
-        let mut block_signatures = BlockSignatures::default();
+        let mut block_signatures = build_block_signatures_v2();
         // Create signatures for keys [1..2].
-        block_signatures
-            .proofs
-            .insert(KEYS[0].clone(), Signature::System);
-        block_signatures
-            .proofs
-            .insert(KEYS[1].clone(), Signature::System);
+        block_signatures.insert_signature(KEYS[0].clone(), Signature::System);
+        block_signatures.insert_signature(KEYS[1].clone(), Signature::System);
 
         let mut weights: BTreeMap<PublicKey, U512> = BTreeMap::default();
         // Add weights for keys [1..2].
         weights.insert(KEYS[0].clone(), 500.into());
         weights.insert(KEYS[1].clone(), 500.into());
-
-        assert!(strip_signatures(&mut block_signatures, &weights));
+        let signatures_after_strip =
+            strip_signatures(BlockSignatures::V2(block_signatures.clone()), &weights).unwrap();
         // Any of the signatures has half the weight, so only one should have
         // been kept.
-        assert_eq!(block_signatures.proofs.len(), 1);
+        let block_signers: Vec<PublicKey> = signatures_after_strip.signers().cloned().collect();
+        assert_eq!(block_signers.len(), 1);
     }
 
     #[test]
     fn strip_signatures_one_small_three_large() {
-        let mut block_signatures = BlockSignatures::default();
+        let mut block_signatures = build_block_signatures_v2();
         // Create signatures for keys [1..4].
-        block_signatures
-            .proofs
-            .insert(KEYS[0].clone(), Signature::System);
-        block_signatures
-            .proofs
-            .insert(KEYS[1].clone(), Signature::System);
-        block_signatures
-            .proofs
-            .insert(KEYS[2].clone(), Signature::System);
-        block_signatures
-            .proofs
-            .insert(KEYS[3].clone(), Signature::System);
+        block_signatures.insert_signature(KEYS[0].clone(), Signature::System);
+        block_signatures.insert_signature(KEYS[1].clone(), Signature::System);
+        block_signatures.insert_signature(KEYS[2].clone(), Signature::System);
+        block_signatures.insert_signature(KEYS[2].clone(), Signature::System);
 
         let mut weights: BTreeMap<PublicKey, U512> = BTreeMap::default();
         // Add weights for keys [1..4].
@@ -227,27 +211,23 @@ mod tests {
         weights.insert(KEYS[2].clone(), 333.into());
         weights.insert(KEYS[3].clone(), 333.into());
 
-        assert!(strip_signatures(&mut block_signatures, &weights));
+        let signatures_after_strip =
+            strip_signatures(BlockSignatures::V2(block_signatures.clone()), &weights).unwrap();
         // Any of the signatures [2..4] has a third of the weight, so one of
         // them plus the first signature with a weight of 1 make weak but not
         // strict finality.
-        assert!(block_signatures.proofs.contains_key(&KEYS[0]));
-        assert_eq!(block_signatures.proofs.len(), 2);
+        let block_signers: Vec<PublicKey> = signatures_after_strip.signers().cloned().collect();
+        assert!(block_signers.contains(&KEYS[0]));
+        assert_eq!(block_signers.len(), 2);
     }
 
     #[test]
     fn strip_signatures_split_weights() {
-        let mut block_signatures = BlockSignatures::default();
+        let mut block_signatures = build_block_signatures_v2();
         // Create signatures for keys [1..3].
-        block_signatures
-            .proofs
-            .insert(KEYS[0].clone(), Signature::System);
-        block_signatures
-            .proofs
-            .insert(KEYS[1].clone(), Signature::System);
-        block_signatures
-            .proofs
-            .insert(KEYS[2].clone(), Signature::System);
+        block_signatures.insert_signature(KEYS[0].clone(), Signature::System);
+        block_signatures.insert_signature(KEYS[1].clone(), Signature::System);
+        block_signatures.insert_signature(KEYS[2].clone(), Signature::System);
 
         let mut weights: BTreeMap<PublicKey, U512> = BTreeMap::default();
         // Add weights for keys [1..3].
@@ -255,25 +235,21 @@ mod tests {
         weights.insert(KEYS[1].clone(), 333.into());
         weights.insert(KEYS[2].clone(), 333.into());
 
-        assert!(strip_signatures(&mut block_signatures, &weights));
+        let signatures_after_strip =
+            strip_signatures(BlockSignatures::V2(block_signatures.clone()), &weights).unwrap();
         // Any 2 signatures have a cumulative weight of 666/999, or 2/3 of the
         // weight, so 1 of the 3 signatures should have been purged.
-        assert_eq!(block_signatures.proofs.len(), 2);
+        let block_signers: Vec<PublicKey> = signatures_after_strip.signers().cloned().collect();
+        assert_eq!(block_signers.len(), 2);
     }
 
     #[test]
     fn strip_signatures_one_key_has_strict_finality() {
-        let mut block_signatures = BlockSignatures::default();
+        let mut block_signatures = build_block_signatures_v2();
         // Create signatures for keys [1..3].
-        block_signatures
-            .proofs
-            .insert(KEYS[0].clone(), Signature::System);
-        block_signatures
-            .proofs
-            .insert(KEYS[1].clone(), Signature::System);
-        block_signatures
-            .proofs
-            .insert(KEYS[2].clone(), Signature::System);
+        block_signatures.insert_signature(KEYS[0].clone(), Signature::System);
+        block_signatures.insert_signature(KEYS[1].clone(), Signature::System);
+        block_signatures.insert_signature(KEYS[2].clone(), Signature::System);
 
         let mut weights: BTreeMap<PublicKey, U512> = BTreeMap::default();
         // Add weights for keys [1..3].
@@ -282,24 +258,33 @@ mod tests {
         weights.insert(KEYS[2].clone(), 700.into());
         // It is not possible to construct a weak but not strict finality set
         // of signatures with the given weights.
-        assert!(!strip_signatures(&mut block_signatures, &weights));
+        assert!(
+            strip_signatures(BlockSignatures::V2(block_signatures.clone()), &weights).is_none()
+        );
     }
 
     #[test]
     fn strip_signatures_single_key() {
-        let mut block_signatures = BlockSignatures::default();
+        let mut block_signatures = build_block_signatures_v2();
         // Create a signature for key 1.
-        block_signatures
-            .proofs
-            .insert(KEYS[0].clone(), Signature::System);
+        block_signatures.insert_signature(KEYS[0].clone(), Signature::System);
 
         let mut weights: BTreeMap<PublicKey, U512> = BTreeMap::default();
         // Add a weight for key 1.
         weights.insert(KEYS[0].clone(), 1000.into());
         // It is not possible to construct a weak but not strict finality set
         // of signatures with a single weight.
-        assert!(!strip_signatures(&mut block_signatures, &weights));
+        assert!(
+            strip_signatures(BlockSignatures::V2(block_signatures.clone()), &weights).is_none()
+        );
+    }
+
+    fn build_block_signatures_v2() -> BlockSignaturesV2 {
+        BlockSignaturesV2::new(
+            BlockHash::new([1; 32].into()),
+            100,
+            EraId::new(10),
+            ChainNameDigest::from_chain_name("abc"),
+        )
     }
 }
-
-*/

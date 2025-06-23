@@ -1,9 +1,8 @@
-pub(crate) mod blocks_index;
 pub(crate) mod databases;
 mod state_store_db;
 #[cfg(test)]
 mod tests;
-mod versioned_database;
+pub(crate) mod versioned_database;
 
 use bincode::Error as BincodeError;
 use casper_types::bytesrepr;
@@ -30,15 +29,15 @@ const MAX_DB_READERS: u32 = 100;
 
 #[derive(Debug, Error)]
 pub enum DeserializationError {
-    #[error("failed parsing struct with bincode")]
+    #[error("failed parsing struct with bincode: {0}")]
     BincodeError(#[from] BincodeError),
-    #[error("failed parsing struct with bytesrepr")]
-    BytesreprError(String),
+    #[error("failed parsing struct with bytesrepr: {0}")]
+    BytesreprError(bytesrepr::Error),
 }
 
 impl From<BytesreprError> for DeserializationError {
     fn from(error: BytesreprError) -> Self {
-        Self::BytesreprError(error.to_string())
+        Self::BytesreprError(error)
     }
 }
 
@@ -95,7 +94,7 @@ pub trait Database {
     /// Parses all elements of a database by trying to deserialize them sequentially.
     fn parse_elements(mut cursor: RoCursor, failfast: bool, start_at: usize) -> Result<(), Error> {
         if start_at > 0 {
-            info!("Skipping {} entries.", start_at);
+            info!("Skipping {start_at} entries.");
         }
         let mut error_buffer = vec![];
         for (idx, r) in cursor.iter().skip(start_at).enumerate() {
@@ -119,7 +118,7 @@ pub trait Database {
                 }
             }
             if idx % ENTRY_LOG_INTERVAL == 0 {
-                info!("Parsed {} entries...", idx);
+                info!("Parsed {idx} entries...");
             }
         }
         info!("Parsing complete.");

@@ -6,7 +6,10 @@ use log::warn;
 
 use crate::common::db::{
     STORAGE_FILE_NAME,
-    databases::{block_body_database, block_header_database, execution_results_database},
+    databases::{
+        block_body_database, block_header_database, execution_results_database,
+        transactions_database,
+    },
     db_env,
 };
 
@@ -19,6 +22,7 @@ pub(crate) fn remove_block<P: AsRef<Path>>(db_path: P, block_hash: BlockHash) ->
     let mut txn = env.begin_rw_txn()?;
     let header_db = block_header_database();
     let body_db = block_body_database();
+    let transaction_db = transactions_database();
     let results_db = execution_results_database();
 
     let header = match header_db.get(&txn, &block_hash).map_err(Error::from)? {
@@ -39,6 +43,7 @@ pub(crate) fn remove_block<P: AsRef<Path>>(db_path: P, block_hash: BlockHash) ->
                         return Err(Error::MissingDeploy(*deploy_hash));
                     }
                     results_db.del(&mut txn, &key)?;
+                    transaction_db.del(&mut txn, &key)?;
                 }
             }
             casper_types::BlockBody::V2(block_body_v2) => {
@@ -51,17 +56,16 @@ pub(crate) fn remove_block<P: AsRef<Path>>(db_path: P, block_hash: BlockHash) ->
                             return Err(Error::MissingTransaction(*transaction_hash));
                         }
                         results_db.del(&mut txn, key)?;
+                        transaction_db.del(&mut txn, key)?;
                     }
                 }
             }
         },
         None => {
-            warn!(
-                "No block body found for block header with hash {}",
-                block_hash
-            );
+            warn!("No block body found for block header with hash {block_hash}");
         }
     };
+    body_db.del(&mut txn, header.body_hash())?;
     header_db.del(&mut txn, &block_hash)?;
     txn.commit()?;
     Ok(())

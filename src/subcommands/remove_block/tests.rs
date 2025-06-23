@@ -1,649 +1,664 @@
-/* TODO reinstantiate these tests
-use std::slice;
-
-use casper_types::{BlockHash, DeployHash};
-use lmdb::{Error as LmdbError, Transaction, WriteFlags};
+use casper_types::{
+    BlockBody, BlockHeader, PublicKey, SecretKey, TransactionHash, testing::TestRng,
+};
+use lmdb::Transaction;
 
 use crate::{
-    common::{db::STORAGE_FILE_NAME, structs::DeployMetadataV1},
+    common::db::{
+        Error as DatabaseError, STORAGE_FILE_NAME,
+        databases::{
+            block_body_database, block_header_database, execution_results_database,
+            transactions_database,
+        },
+        versioned_database::serialize_bytesrepr,
+    },
     subcommands::remove_block::{Error, remove::remove_block},
     test_utils::{
-        LmdbTestFixture, MockBlockHeader, mock_block_header, mock_deploy_hash, mock_deploy_metadata,
+        LmdbTestFixture, block_v2_with_height, mock_execution_result, mock_execution_result_v2,
+        mock_transaction_hash, store_execution_result, store_execution_result_opt_block_hash,
     },
 };
 
 #[test]
 fn remove_block_should_work() {
-    const BLOCK_COUNT: usize = 2;
+    let mut rng = TestRng::new();
+    let secret_key = SecretKey::ed25519_from_bytes([222; SecretKey::ED25519_LENGTH])
+        .expect("should create secret key");
+    let pk = PublicKey::from(&secret_key);
+
     const DEPLOY_COUNT: usize = 3;
 
-    let test_fixture = LmdbTestFixture::new(
-        vec![
-            BlockHeaderDatabase::db_name(),
-            BlockBodyDatabase::db_name(),
-            DeployMetadataDatabase::db_name(),
-        ],
-        Some(STORAGE_FILE_NAME),
-    );
-
-    let deploy_hashes: Vec<DeployHash> = (0..DEPLOY_COUNT as u8).map(mock_deploy_hash).collect();
-    let block_headers: Vec<(BlockHash, MockBlockHeader)> =
-        (0..BLOCK_COUNT as u8).map(mock_block_header).collect();
-    let mut block_bodies = vec![];
-    let mut block_body_deploy_map: Vec<Vec<usize>> = vec![];
-    block_bodies.push(BlockBody::new(vec![deploy_hashes[0], deploy_hashes[1]]));
-    block_body_deploy_map.push(vec![0, 1]);
-    block_bodies.push(BlockBody::new(vec![deploy_hashes[1], deploy_hashes[2]]));
-    block_body_deploy_map.push(vec![1, 2]);
-
-    let deploy_metadatas = [
-        mock_deploy_metadata(slice::from_ref(&block_headers[0].0)),
-        mock_deploy_metadata(&[block_headers[0].0, block_headers[1].0]),
-        mock_deploy_metadata(slice::from_ref(&block_headers[1].0)),
+    let fixture = LmdbTestFixture::new(Some(STORAGE_FILE_NAME));
+    let transaction_hashes: Vec<TransactionHash> =
+        (0..DEPLOY_COUNT as u8).map(mock_transaction_hash).collect();
+    let blocks = vec![
+        block_v2_with_height(
+            &mut rng,
+            pk.clone(),
+            vec![transaction_hashes[0]],
+            10,
+            80,
+            None,
+        ),
+        block_v2_with_height(
+            &mut rng,
+            pk.clone(),
+            vec![transaction_hashes[1], transaction_hashes[2]],
+            11,
+            90,
+            None,
+        ),
     ];
+    let block_headers: Vec<_> = blocks.iter().map(|b| b.header().clone()).collect();
+
+    let execution_results = [
+        (*blocks[0].hash(), mock_execution_result()),
+        (*blocks[1].hash(), mock_execution_result()),
+        (*blocks[1].hash(), mock_execution_result()),
+    ];
+
+    let env = fixture.env;
+    let block_header_db = block_header_database();
+    block_header_db.create(env.clone()).unwrap();
+    let block_body_db = block_body_database();
+    block_body_db.create(env.clone()).unwrap();
+    let transactions_db = transactions_database();
+    transactions_db.create(env.clone()).unwrap();
+    let mut execution_results_db = execution_results_database();
+    execution_results_db.create(env.clone()).unwrap();
 
     // Insert the 2 blocks into the database.
     {
-        let mut txn = test_fixture.env.begin_rw_txn().unwrap();
-        for i in 0..BLOCK_COUNT {
+        let mut txn = env.begin_rw_txn().unwrap();
+        for block in blocks.iter() {
             // Store the header.
-            txn.put(
-                *test_fixture
-                    .db(Some(BlockHeaderDatabase::db_name()))
-                    .unwrap(),
-                &block_headers[i].0,
-                &bincode::serialize(&block_headers[i].1).unwrap(),
-                WriteFlags::empty(),
-            )
-            .unwrap();
+            let header = block.header().clone();
+            let body_hash = *header.body_hash();
+            block_header_db
+                .put(&mut txn, *block.hash(), BlockHeader::V2(header), true)
+                .unwrap();
             // Store the body.
-            txn.put(
-                *test_fixture.db(Some(BlockBodyDatabase::db_name())).unwrap(),
-                &block_headers[i].1.body_hash,
-                &bincode::serialize(&block_bodies[i]).unwrap(),
-                WriteFlags::empty(),
-            )
-            .unwrap();
+
+            block_body_db
+                .put(
+                    &mut txn,
+                    body_hash,
+                    casper_types::BlockBody::V2(block.body().clone()),
+                    true,
+                )
+                .unwrap();
         }
 
         // Insert the 3 deploys into the deploys and deploy_metadata databases.
-        for i in 0..DEPLOY_COUNT {
-            txn.put(
-                *test_fixture
-                    .db(Some(DeployMetadataDatabase::db_name()))
-                    .unwrap(),
-                &deploy_hashes[i],
-                &bincode::serialize(&deploy_metadatas[i]).unwrap(),
-                WriteFlags::empty(),
-            )
-            .unwrap();
+        for (idx, transaction_hash) in transaction_hashes.iter().enumerate() {
+            let (block_hash, execution_result) = &execution_results[idx];
+            store_execution_result(
+                &mut txn,
+                &mut execution_results_db,
+                *transaction_hash,
+                execution_result.clone(),
+                *block_hash,
+            );
         }
+
         txn.commit().unwrap();
     };
 
-    assert!(remove_block(test_fixture.tmp_dir.path(), block_headers[0].0).is_ok());
+    assert!(remove_block(fixture.tmp_dir.path(), *blocks[0].hash()).is_ok());
 
     {
-        let txn = test_fixture.env.begin_ro_txn().unwrap();
-        assert_eq!(
-            txn.get(
-                *test_fixture
-                    .db(Some(BlockHeaderDatabase::db_name()))
-                    .unwrap(),
-                &block_headers[0].0,
-            )
-            .unwrap_err(),
-            LmdbError::NotFound
+        let txn = env.begin_ro_txn().unwrap();
+        assert!(
+            block_header_db
+                .get(&txn, blocks[0].hash())
+                .unwrap()
+                .is_none()
         );
         assert!(
-            txn.get(
-                *test_fixture
-                    .db(Some(BlockHeaderDatabase::db_name()))
-                    .unwrap(),
-                &block_headers[1].0,
-            )
-            .is_ok()
+            block_header_db
+                .get(&txn, blocks[1].hash())
+                .unwrap()
+                .is_some()
         );
 
-        assert_eq!(
-            txn.get(
-                *test_fixture.db(Some(BlockBodyDatabase::db_name())).unwrap(),
-                &block_headers[0].1.body_hash,
-            )
-            .unwrap_err(),
-            LmdbError::NotFound
-        );
         assert!(
-            txn.get(
-                *test_fixture.db(Some(BlockBodyDatabase::db_name())).unwrap(),
-                &block_headers[1].1.body_hash,
-            )
-            .is_ok()
+            block_body_db
+                .get(&txn, block_headers[0].body_hash())
+                .unwrap()
+                .is_none()
         );
 
-        assert_eq!(
-            txn.get(
-                *test_fixture
-                    .db(Some(DeployMetadataDatabase::db_name()))
-                    .unwrap(),
-                &deploy_hashes[0]
-            )
-            .unwrap_err(),
-            LmdbError::NotFound
+        assert!(
+            block_body_db
+                .get(&txn, block_headers[1].body_hash())
+                .unwrap()
+                .is_some()
         );
 
-        let deploy_metadata: DeployMetadataV1 = bincode::deserialize(
-            txn.get(
-                *test_fixture
-                    .db(Some(DeployMetadataDatabase::db_name()))
-                    .unwrap(),
-                &deploy_hashes[1],
-            )
-            .unwrap(),
-        )
-        .unwrap();
         assert!(
-            !deploy_metadata
-                .execution_results
-                .contains_key(&block_headers[0].0)
-        );
-        assert!(
-            deploy_metadata
-                .execution_results
-                .contains_key(&block_headers[1].0)
+            execution_results_db
+                .get(&txn, &transaction_hashes[0])
+                .unwrap()
+                .is_none()
         );
 
-        let deploy_metadata: DeployMetadataV1 = bincode::deserialize(
-            txn.get(
-                *test_fixture
-                    .db(Some(DeployMetadataDatabase::db_name()))
-                    .unwrap(),
-                &deploy_hashes[2],
-            )
-            .unwrap(),
-        )
-        .unwrap();
         assert!(
-            !deploy_metadata
-                .execution_results
-                .contains_key(&block_headers[0].0)
+            execution_results_db
+                .get(&txn, &transaction_hashes[1])
+                .unwrap()
+                .is_some()
         );
-        assert!(
-            deploy_metadata
-                .execution_results
-                .contains_key(&block_headers[1].0)
-        );
-        txn.commit().unwrap();
     }
 }
 
 #[test]
-fn remove_block_no_deploys() {
-    const BLOCK_COUNT: usize = 2;
+fn remove_block_no_transactions() {
+    let mut rng = TestRng::new();
+    let secret_key = SecretKey::ed25519_from_bytes([222; SecretKey::ED25519_LENGTH])
+        .expect("should create secret key");
+    let pk = PublicKey::from(&secret_key);
+
     const DEPLOY_COUNT: usize = 3;
 
-    let test_fixture = LmdbTestFixture::new(
-        vec![
-            BlockHeaderDatabase::db_name(),
-            BlockBodyDatabase::db_name(),
-            DeployMetadataDatabase::db_name(),
-        ],
-        Some(STORAGE_FILE_NAME),
-    );
-
-    let deploy_hashes: Vec<DeployHash> = (0..DEPLOY_COUNT as u8).map(mock_deploy_hash).collect();
-    let block_headers: Vec<(BlockHash, MockBlockHeader)> =
-        (0..BLOCK_COUNT as u8).map(mock_block_header).collect();
-    let mut block_bodies = vec![];
-    let mut block_body_deploy_map: Vec<Vec<usize>> = vec![];
-    block_bodies.push(BlockBody::new(vec![]));
-    block_body_deploy_map.push(vec![]);
-    block_bodies.push(BlockBody::new(vec![deploy_hashes[1], deploy_hashes[2]]));
-    block_body_deploy_map.push(vec![1, 2]);
-
-    let deploy_metadatas = [
-        mock_deploy_metadata(&[]),
-        mock_deploy_metadata(slice::from_ref(&block_headers[1].0)),
-        mock_deploy_metadata(slice::from_ref(&block_headers[1].0)),
+    let fixture = LmdbTestFixture::new(Some(STORAGE_FILE_NAME));
+    let transaction_hashes: Vec<TransactionHash> =
+        (0..DEPLOY_COUNT as u8).map(mock_transaction_hash).collect();
+    let blocks = vec![
+        block_v2_with_height(&mut rng, pk.clone(), vec![], 10, 80, None),
+        block_v2_with_height(
+            &mut rng,
+            pk.clone(),
+            vec![transaction_hashes[1], transaction_hashes[2]],
+            11,
+            90,
+            None,
+        ),
     ];
+    let block_headers: Vec<_> = blocks.iter().map(|b| b.header().clone()).collect();
+
+    let execution_results = [
+        (None, mock_execution_result_v2()),
+        (Some(*blocks[1].hash()), mock_execution_result_v2()),
+        (Some(*blocks[1].hash()), mock_execution_result_v2()),
+    ];
+
+    let env = fixture.env;
+    let block_header_db = block_header_database();
+    block_header_db.create(env.clone()).unwrap();
+    let block_body_db = block_body_database();
+    block_body_db.create(env.clone()).unwrap();
+    let transactions_db = transactions_database();
+    transactions_db.create(env.clone()).unwrap();
+    let mut execution_results_db = execution_results_database();
+    execution_results_db.create(env.clone()).unwrap();
 
     // Insert the 2 blocks into the database.
     {
-        let mut txn = test_fixture.env.begin_rw_txn().unwrap();
-        for i in 0..BLOCK_COUNT {
+        let mut txn = env.begin_rw_txn().unwrap();
+        for block in blocks.iter() {
             // Store the header.
-            txn.put(
-                *test_fixture
-                    .db(Some(BlockHeaderDatabase::db_name()))
-                    .unwrap(),
-                &block_headers[i].0,
-                &bincode::serialize(&block_headers[i].1).unwrap(),
-                WriteFlags::empty(),
-            )
-            .unwrap();
+            let header = block.header().clone();
+            let body_hash = *header.body_hash();
+            block_header_db
+                .put(&mut txn, *block.hash(), BlockHeader::V2(header), true)
+                .unwrap();
             // Store the body.
-            txn.put(
-                *test_fixture.db(Some(BlockBodyDatabase::db_name())).unwrap(),
-                &block_headers[i].1.body_hash,
-                &bincode::serialize(&block_bodies[i]).unwrap(),
-                WriteFlags::empty(),
-            )
-            .unwrap();
+
+            block_body_db
+                .put(
+                    &mut txn,
+                    body_hash,
+                    casper_types::BlockBody::V2(block.body().clone()),
+                    true,
+                )
+                .unwrap();
         }
 
-        // Insert the last 2 deploys into the deploys and deploy_metadata
-        // databases.
-        for i in 1..DEPLOY_COUNT {
-            txn.put(
-                *test_fixture
-                    .db(Some(DeployMetadataDatabase::db_name()))
-                    .unwrap(),
-                &deploy_hashes[i],
-                &bincode::serialize(&deploy_metadatas[i]).unwrap(),
-                WriteFlags::empty(),
-            )
-            .unwrap();
+        // Insert the 3 deploys into the deploys and deploy_metadata databases.
+        for (idx, transaction_hash) in transaction_hashes.iter().enumerate() {
+            let (block_hash, execution_result) = &execution_results[idx];
+            store_execution_result_opt_block_hash(
+                &mut txn,
+                &mut execution_results_db,
+                *transaction_hash,
+                execution_result.clone(),
+                *block_hash,
+            );
         }
+
         txn.commit().unwrap();
     };
 
-    assert!(remove_block(test_fixture.tmp_dir.path(), block_headers[0].0).is_ok());
+    assert!(remove_block(fixture.tmp_dir.path(), *blocks[0].hash()).is_ok());
 
     {
-        let txn = test_fixture.env.begin_ro_txn().unwrap();
-        assert_eq!(
-            txn.get(
-                *test_fixture
-                    .db(Some(BlockHeaderDatabase::db_name()))
-                    .unwrap(),
-                &block_headers[0].0,
-            )
-            .unwrap_err(),
-            LmdbError::NotFound
+        let txn = env.begin_ro_txn().unwrap();
+        assert!(
+            block_header_db
+                .get(&txn, blocks[0].hash())
+                .unwrap()
+                .is_none()
         );
         assert!(
-            txn.get(
-                *test_fixture
-                    .db(Some(BlockHeaderDatabase::db_name()))
-                    .unwrap(),
-                &block_headers[1].0,
-            )
-            .is_ok()
+            block_header_db
+                .get(&txn, blocks[1].hash())
+                .unwrap()
+                .is_some()
         );
 
-        assert_eq!(
-            txn.get(
-                *test_fixture.db(Some(BlockBodyDatabase::db_name())).unwrap(),
-                &block_headers[0].1.body_hash,
-            )
-            .unwrap_err(),
-            LmdbError::NotFound
-        );
         assert!(
-            txn.get(
-                *test_fixture.db(Some(BlockBodyDatabase::db_name())).unwrap(),
-                &block_headers[1].1.body_hash,
-            )
-            .is_ok()
+            block_body_db
+                .get(&txn, block_headers[0].body_hash())
+                .unwrap()
+                .is_none()
         );
 
-        assert_eq!(
-            txn.get(
-                *test_fixture
-                    .db(Some(DeployMetadataDatabase::db_name()))
-                    .unwrap(),
-                &deploy_hashes[0]
-            )
-            .unwrap_err(),
-            LmdbError::NotFound
+        assert!(
+            block_body_db
+                .get(&txn, block_headers[1].body_hash())
+                .unwrap()
+                .is_some()
         );
 
-        let deploy_metadata: DeployMetadataV1 = bincode::deserialize(
-            txn.get(
-                *test_fixture
-                    .db(Some(DeployMetadataDatabase::db_name()))
-                    .unwrap(),
-                &deploy_hashes[1],
-            )
-            .unwrap(),
-        )
-        .unwrap();
         assert!(
-            !deploy_metadata
-                .execution_results
-                .contains_key(&block_headers[0].0)
-        );
-        assert!(
-            deploy_metadata
-                .execution_results
-                .contains_key(&block_headers[1].0)
+            execution_results_db
+                .get(&txn, &transaction_hashes[0])
+                .unwrap()
+                .is_some()
         );
 
-        let deploy_metadata: DeployMetadataV1 = bincode::deserialize(
-            txn.get(
-                *test_fixture
-                    .db(Some(DeployMetadataDatabase::db_name()))
-                    .unwrap(),
-                &deploy_hashes[2],
-            )
-            .unwrap(),
-        )
-        .unwrap();
         assert!(
-            !deploy_metadata
-                .execution_results
-                .contains_key(&block_headers[0].0)
+            execution_results_db
+                .get(&txn, &transaction_hashes[1])
+                .unwrap()
+                .is_some()
         );
-        assert!(
-            deploy_metadata
-                .execution_results
-                .contains_key(&block_headers[1].0)
-        );
-        txn.commit().unwrap();
     }
 }
 
 #[test]
 fn remove_block_missing_header() {
-    let test_fixture = LmdbTestFixture::new(
-        vec![
-            BlockHeaderDatabase::db_name(),
-            BlockBodyDatabase::db_name(),
-            DeployMetadataDatabase::db_name(),
-        ],
-        Some(STORAGE_FILE_NAME),
-    );
+    let mut rng = TestRng::new();
+    let secret_key = SecretKey::ed25519_from_bytes([222; SecretKey::ED25519_LENGTH])
+        .expect("should create secret key");
+    let pk = PublicKey::from(&secret_key);
+    let fixture = LmdbTestFixture::new(Some(STORAGE_FILE_NAME));
+    let env = fixture.env;
+    let block_header_db = block_header_database();
+    block_header_db.create(env.clone()).unwrap();
+    let block_body_db = block_body_database();
+    block_body_db.create(env.clone()).unwrap();
+    let transactions_db = transactions_database();
+    transactions_db.create(env.clone()).unwrap();
+    let execution_results_db = execution_results_database();
+    execution_results_db.create(env.clone()).unwrap();
 
-    let (block_hash, _block_header) = mock_block_header(0);
+    let block = block_v2_with_height(&mut rng, pk.clone(), vec![], 10, 80, None);
+    let block_hash = *block.hash();
     assert!(
-        matches!(remove_block(test_fixture.tmp_dir.path(), block_hash).unwrap_err(), Error::MissingHeader(actual_block_hash) if block_hash == actual_block_hash)
+        matches!(remove_block(fixture.tmp_dir.path(), block_hash).unwrap_err(), Error::MissingHeader(actual_block_hash) if block_hash == actual_block_hash)
     );
 }
 
 #[test]
 fn remove_block_missing_body() {
-    const BLOCK_COUNT: usize = 2;
     const DEPLOY_COUNT: usize = 3;
+    let mut rng = TestRng::new();
+    let secret_key = SecretKey::ed25519_from_bytes([222; SecretKey::ED25519_LENGTH])
+        .expect("should create secret key");
+    let pk = PublicKey::from(&secret_key);
+    let fixture = LmdbTestFixture::new(Some(STORAGE_FILE_NAME));
+    let env = fixture.env;
+    let block_header_db = block_header_database();
+    block_header_db.create(env.clone()).unwrap();
+    let block_body_db = block_body_database();
+    block_body_db.create(env.clone()).unwrap();
+    let transactions_db = transactions_database();
+    transactions_db.create(env.clone()).unwrap();
+    let mut execution_results_db = execution_results_database();
+    execution_results_db.create(env.clone()).unwrap();
 
-    let test_fixture = LmdbTestFixture::new(
-        vec![
-            BlockHeaderDatabase::db_name(),
-            BlockBodyDatabase::db_name(),
-            DeployMetadataDatabase::db_name(),
-        ],
-        Some(STORAGE_FILE_NAME),
-    );
-
-    let deploy_hashes: Vec<DeployHash> = (0..DEPLOY_COUNT as u8).map(mock_deploy_hash).collect();
-    let block_headers: Vec<(BlockHash, MockBlockHeader)> =
-        (0..BLOCK_COUNT as u8).map(mock_block_header).collect();
-    let mut block_bodies = vec![];
-    let mut block_body_deploy_map: Vec<Vec<usize>> = vec![];
-    block_bodies.push(BlockBody::new(vec![deploy_hashes[0], deploy_hashes[1]]));
-    block_body_deploy_map.push(vec![0, 1]);
-    block_bodies.push(BlockBody::new(vec![deploy_hashes[1], deploy_hashes[2]]));
-    block_body_deploy_map.push(vec![1, 2]);
-
-    let deploy_metadatas = [
-        mock_deploy_metadata(slice::from_ref(&block_headers[0].0)),
-        mock_deploy_metadata(&[block_headers[0].0, block_headers[1].0]),
-        mock_deploy_metadata(slice::from_ref(&block_headers[1].0)),
+    let transaction_hashes: Vec<TransactionHash> =
+        (0..DEPLOY_COUNT as u8).map(mock_transaction_hash).collect();
+    let blocks = vec![
+        block_v2_with_height(&mut rng, pk.clone(), vec![], 10, 80, None),
+        block_v2_with_height(
+            &mut rng,
+            pk.clone(),
+            vec![transaction_hashes[1], transaction_hashes[2]],
+            11,
+            90,
+            None,
+        ),
+    ];
+    let block_headers: Vec<_> = blocks.iter().map(|b| b.header().clone()).collect();
+    let execution_results = [
+        (Some(*blocks[0].hash()), mock_execution_result_v2()),
+        (Some(*blocks[1].hash()), mock_execution_result_v2()),
+        (Some(*blocks[1].hash()), mock_execution_result_v2()),
     ];
 
     // Insert the 2 block headers into the database.
     {
-        let mut txn = test_fixture.env.begin_rw_txn().unwrap();
-        for (block_hash, block_header) in block_headers.iter().take(BLOCK_COUNT) {
-            // Store the header.
-            txn.put(
-                *test_fixture
-                    .db(Some(BlockHeaderDatabase::db_name()))
-                    .unwrap(),
-                block_hash,
-                &bincode::serialize(block_header).unwrap(),
-                WriteFlags::empty(),
-            )
-            .unwrap();
+        let mut txn = env.begin_rw_txn().unwrap();
+        for block in blocks.iter() {
+            let header = block.header().clone();
+            block_header_db
+                .put(&mut txn, *block.hash(), BlockHeader::V2(header), true)
+                .unwrap();
         }
 
         // Insert the 3 deploys into the deploys and deploy_metadata databases.
-        for i in 0..DEPLOY_COUNT {
-            txn.put(
-                *test_fixture
-                    .db(Some(DeployMetadataDatabase::db_name()))
-                    .unwrap(),
-                &deploy_hashes[i],
-                &bincode::serialize(&deploy_metadatas[i]).unwrap(),
-                WriteFlags::empty(),
-            )
-            .unwrap();
+        for (idx, transaction_hash) in transaction_hashes.iter().enumerate() {
+            let (block_hash, execution_result) = &execution_results[idx];
+            store_execution_result_opt_block_hash(
+                &mut txn,
+                &mut execution_results_db,
+                *transaction_hash,
+                execution_result.clone(),
+                *block_hash,
+            );
         }
         txn.commit().unwrap();
     };
 
-    assert!(remove_block(test_fixture.tmp_dir.path(), block_headers[0].0).is_ok());
+    assert!(remove_block(fixture.tmp_dir.path(), block_headers[0].block_hash()).is_ok());
 
     {
-        let txn = test_fixture.env.begin_ro_txn().unwrap();
-        assert_eq!(
-            txn.get(
-                *test_fixture
-                    .db(Some(BlockHeaderDatabase::db_name()))
-                    .unwrap(),
-                &block_headers[0].0,
-            )
-            .unwrap_err(),
-            LmdbError::NotFound
+        let txn = env.begin_ro_txn().unwrap();
+        assert!(
+            block_header_db
+                .get(&txn, blocks[0].hash())
+                .unwrap()
+                .is_none()
         );
         assert!(
-            txn.get(
-                *test_fixture
-                    .db(Some(BlockHeaderDatabase::db_name()))
-                    .unwrap(),
-                &block_headers[1].0,
-            )
-            .is_ok()
+            block_header_db
+                .get(&txn, blocks[1].hash())
+                .unwrap()
+                .is_some()
         );
 
-        assert_eq!(
-            txn.get(
-                *test_fixture.db(Some(BlockBodyDatabase::db_name())).unwrap(),
-                &block_headers[0].1.body_hash,
-            )
-            .unwrap_err(),
-            LmdbError::NotFound
+        assert!(
+            block_body_db
+                .get(&txn, block_headers[0].body_hash())
+                .unwrap()
+                .is_none()
         );
-        assert_eq!(
-            txn.get(
-                *test_fixture.db(Some(BlockBodyDatabase::db_name())).unwrap(),
-                &block_headers[1].1.body_hash,
-            )
-            .unwrap_err(),
-            LmdbError::NotFound
+        assert!(
+            block_body_db
+                .get(&txn, block_headers[1].body_hash())
+                .unwrap()
+                .is_none()
         );
         txn.commit().unwrap();
     }
 }
 
 #[test]
-fn remove_block_missing_deploys() {
-    let test_fixture = LmdbTestFixture::new(
-        vec![
-            BlockHeaderDatabase::db_name(),
-            BlockBodyDatabase::db_name(),
-            DeployMetadataDatabase::db_name(),
-        ],
-        Some(STORAGE_FILE_NAME),
-    );
+fn remove_block_missing_transactions() {
+    let mut rng = TestRng::new();
+    let secret_key = SecretKey::ed25519_from_bytes([222; SecretKey::ED25519_LENGTH])
+        .expect("should create secret key");
+    let pk = PublicKey::from(&secret_key);
 
-    let (block_hash, block_header) = mock_block_header(0);
-    let deploy_hash = mock_deploy_hash(0);
-    let block_body = BlockBody::new(vec![deploy_hash]);
+    const DEPLOY_COUNT: usize = 3;
 
-    // Insert the block into the database.
+    let fixture = LmdbTestFixture::new(Some(STORAGE_FILE_NAME));
+    let transaction_hashes: Vec<TransactionHash> =
+        (0..DEPLOY_COUNT as u8).map(mock_transaction_hash).collect();
+    let blocks = vec![
+        block_v2_with_height(&mut rng, pk.clone(), vec![], 10, 80, None),
+        block_v2_with_height(
+            &mut rng,
+            pk.clone(),
+            vec![transaction_hashes[1], transaction_hashes[2]],
+            11,
+            90,
+            None,
+        ),
+    ];
+    let block_headers: Vec<_> = blocks.iter().map(|b| b.header().clone()).collect();
+
+    let execution_results = [
+        (None, mock_execution_result_v2()),
+        (Some(*blocks[1].hash()), mock_execution_result_v2()),
+        (Some(*blocks[1].hash()), mock_execution_result_v2()),
+    ];
+
+    let env = fixture.env;
+    let block_header_db = block_header_database();
+    block_header_db.create(env.clone()).unwrap();
+    let block_body_db = block_body_database();
+    block_body_db.create(env.clone()).unwrap();
+    let transactions_db = transactions_database();
+    transactions_db.create(env.clone()).unwrap();
+    let mut execution_results_db = execution_results_database();
+    execution_results_db.create(env.clone()).unwrap();
+
+    // Insert the 2 blocks into the database.
     {
-        let mut txn = test_fixture.env.begin_rw_txn().unwrap();
+        let mut txn = env.begin_rw_txn().unwrap();
+        for block in blocks.iter() {
+            // Store the header.
+            let header = block.header().clone();
+            let body_hash = *header.body_hash();
+            block_header_db
+                .put(&mut txn, *block.hash(), BlockHeader::V2(header), true)
+                .unwrap();
+            // Store the body.
 
-        // Store the header.
-        txn.put(
-            *test_fixture
-                .db(Some(BlockHeaderDatabase::db_name()))
-                .unwrap(),
-            &block_hash,
-            &bincode::serialize(&block_header).unwrap(),
-            WriteFlags::empty(),
-        )
-        .unwrap();
-        // Store the body.
-        txn.put(
-            *test_fixture.db(Some(BlockBodyDatabase::db_name())).unwrap(),
-            &block_header.body_hash,
-            &bincode::serialize(&block_body).unwrap(),
-            WriteFlags::empty(),
-        )
-        .unwrap();
+            block_body_db
+                .put(
+                    &mut txn,
+                    body_hash,
+                    casper_types::BlockBody::V2(block.body().clone()),
+                    true,
+                )
+                .unwrap();
+        }
+
+        // Insert the 3 deploys into the deploys and deploy_metadata databases.
+        for (idx, transaction_hash) in transaction_hashes.iter().enumerate() {
+            let (block_hash, execution_result) = &execution_results[idx];
+            store_execution_result_opt_block_hash(
+                &mut txn,
+                &mut execution_results_db,
+                *transaction_hash,
+                execution_result.clone(),
+                *block_hash,
+            );
+        }
 
         txn.commit().unwrap();
     };
 
-    assert!(
-        matches!(remove_block(test_fixture.tmp_dir.path(), block_hash).unwrap_err(), Error::MissingDeploy(actual_deploy_hash) if deploy_hash == actual_deploy_hash)
-    );
+    assert!(remove_block(fixture.tmp_dir.path(), *blocks[0].hash()).is_ok());
+
+    {
+        let txn = env.begin_ro_txn().unwrap();
+        assert!(
+            block_header_db
+                .get(&txn, blocks[0].hash())
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            block_header_db
+                .get(&txn, blocks[1].hash())
+                .unwrap()
+                .is_some()
+        );
+
+        assert!(
+            block_body_db
+                .get(&txn, block_headers[0].body_hash())
+                .unwrap()
+                .is_none()
+        );
+
+        assert!(
+            block_body_db
+                .get(&txn, block_headers[1].body_hash())
+                .unwrap()
+                .is_some()
+        );
+
+        assert!(
+            execution_results_db
+                .get(&txn, &transaction_hashes[0])
+                .unwrap()
+                .is_some()
+        );
+
+        assert!(
+            execution_results_db
+                .get(&txn, &transaction_hashes[1])
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            execution_results_db
+                .get(&txn, &transaction_hashes[2])
+                .unwrap()
+                .is_some()
+        );
+    }
 }
 
 #[test]
 fn remove_block_invalid_header() {
-    let test_fixture = LmdbTestFixture::new(
-        vec![
-            BlockHeaderDatabase::db_name(),
-            BlockBodyDatabase::db_name(),
-            DeployMetadataDatabase::db_name(),
-        ],
-        Some(STORAGE_FILE_NAME),
-    );
+    let mut rng = TestRng::new();
+    let secret_key = SecretKey::ed25519_from_bytes([222; SecretKey::ED25519_LENGTH])
+        .expect("should create secret key");
+    let pk = PublicKey::from(&secret_key);
 
-    let (block_hash, _block_header) = mock_block_header(0);
+    let fixture = LmdbTestFixture::new(Some(STORAGE_FILE_NAME));
+
+    let block = block_v2_with_height(&mut rng, pk.clone(), vec![], 10, 80, None);
+    let block_hash = *block.hash();
+    let env = fixture.env;
+    let block_header_db = block_header_database();
+    block_header_db.create(env.clone()).unwrap();
 
     // Insert the an invalid block header into the database.
     {
-        let mut txn = test_fixture.env.begin_rw_txn().unwrap();
+        let mut txn = env.begin_rw_txn().unwrap();
 
         // Store the header.
-        txn.put(
-            *test_fixture
-                .db(Some(BlockHeaderDatabase::db_name()))
-                .unwrap(),
-            &block_hash,
-            &[0u8, 1u8, 2u8],
-            WriteFlags::empty(),
-        )
-        .unwrap();
+        let raw_block_hash = serialize_bytesrepr(&block_hash).unwrap();
+        block_header_db
+            .put_raw(&mut txn, raw_block_hash, vec![0u8, 1u8, 2u8], true)
+            .unwrap();
 
         txn.commit().unwrap();
     };
-
-    assert!(
-        matches!(remove_block(test_fixture.tmp_dir.path(), block_hash).unwrap_err(), Error::HeaderParsing(actual_block_hash, _) if block_hash == actual_block_hash)
-    );
+    assert!(matches!(
+        remove_block(fixture.tmp_dir.path(), block_hash).unwrap_err(),
+        Error::DatabaseLayer(DatabaseError::Parsing(_, _))
+    ));
 }
 
 #[test]
 fn remove_block_invalid_body() {
-    let test_fixture = LmdbTestFixture::new(
-        vec![
-            BlockHeaderDatabase::db_name(),
-            BlockBodyDatabase::db_name(),
-            DeployMetadataDatabase::db_name(),
-        ],
-        Some(STORAGE_FILE_NAME),
-    );
+    let mut rng = TestRng::new();
+    let secret_key = SecretKey::ed25519_from_bytes([222; SecretKey::ED25519_LENGTH])
+        .expect("should create secret key");
+    let pk = PublicKey::from(&secret_key);
 
-    let (block_hash, block_header) = mock_block_header(0);
+    let fixture = LmdbTestFixture::new(Some(STORAGE_FILE_NAME));
+    let env = fixture.env.clone();
+    let block_header_db = block_header_database();
+    block_header_db.create(env.clone()).unwrap();
+    let block_body_db = block_body_database();
+    block_body_db.create(env.clone()).unwrap();
+
+    let block = block_v2_with_height(&mut rng, pk.clone(), vec![], 10, 80, None);
 
     // Insert the block header along with an invalid body into the database.
     {
-        let mut txn = test_fixture.env.begin_rw_txn().unwrap();
+        let mut txn = env.begin_rw_txn().unwrap();
 
         // Store the header.
-        txn.put(
-            *test_fixture
-                .db(Some(BlockHeaderDatabase::db_name()))
-                .unwrap(),
-            &block_hash,
-            &bincode::serialize(&block_header).unwrap(),
-            WriteFlags::empty(),
-        )
-        .unwrap();
+        let block_header_v2 = block.header().clone();
+        let body_hash = *block_header_v2.body_hash();
+        block_header_db
+            .put(
+                &mut txn,
+                *block.hash(),
+                BlockHeader::V2(block_header_v2),
+                true,
+            )
+            .unwrap();
         // Store the body.
-        txn.put(
-            *test_fixture.db(Some(BlockBodyDatabase::db_name())).unwrap(),
-            &block_header.body_hash,
-            &[0u8, 1u8, 2u8],
-            WriteFlags::empty(),
-        )
-        .unwrap();
+        block_body_db
+            .put_raw(
+                &mut txn,
+                serialize_bytesrepr(&body_hash).unwrap(),
+                vec![0u8, 1u8, 2u8],
+                true,
+            )
+            .unwrap();
 
         txn.commit().unwrap();
     };
-
-    assert!(
-        matches!(remove_block(test_fixture.tmp_dir.path(), block_hash).unwrap_err(), Error::BodyParsing(actual_block_hash, _) if block_hash == actual_block_hash)
-    );
+    assert!(matches!(
+        remove_block(fixture.tmp_dir.path(), *block.hash()).unwrap_err(),
+        Error::DatabaseLayer(DatabaseError::Parsing(_, _))
+    ));
 }
 
 #[test]
 fn remove_block_invalid_deploy_metadata() {
-    let test_fixture = LmdbTestFixture::new(
-        vec![
-            BlockHeaderDatabase::db_name(),
-            BlockBodyDatabase::db_name(),
-            DeployMetadataDatabase::db_name(),
-        ],
-        Some(STORAGE_FILE_NAME),
-    );
+    let mut rng = TestRng::new();
+    let secret_key = SecretKey::ed25519_from_bytes([222; SecretKey::ED25519_LENGTH])
+        .expect("should create secret key");
+    let pk = PublicKey::from(&secret_key);
 
-    let (block_hash, block_header) = mock_block_header(0);
-    let deploy_hash = mock_deploy_hash(0);
-    let block_body = BlockBody::new(vec![deploy_hash]);
+    let fixture = LmdbTestFixture::new(Some(STORAGE_FILE_NAME));
+    let env = fixture.env.clone();
+    let block_header_db = block_header_database();
+    block_header_db.create(env.clone()).unwrap();
+    let block_body_db = block_body_database();
+    block_body_db.create(env.clone()).unwrap();
+    let execution_results_db = execution_results_database();
+    execution_results_db.create(env.clone()).unwrap();
+
+    let transaction_hash = mock_transaction_hash(0);
+    let block = block_v2_with_height(&mut rng, pk.clone(), vec![transaction_hash], 10, 80, None);
 
     // Insert the block into the database.
     {
-        let mut txn = test_fixture.env.begin_rw_txn().unwrap();
+        let mut txn = env.begin_rw_txn().unwrap();
+        block_header_db
+            .put(
+                &mut txn,
+                *block.hash(),
+                BlockHeader::V2(block.header().clone()),
+                true,
+            )
+            .unwrap();
+        block_body_db
+            .put(
+                &mut txn,
+                *block.body_hash(),
+                BlockBody::V2(block.body().clone()),
+                true,
+            )
+            .unwrap();
 
-        // Store the header.
-        txn.put(
-            *test_fixture
-                .db(Some(BlockHeaderDatabase::db_name()))
-                .unwrap(),
-            &block_hash,
-            &bincode::serialize(&block_header).unwrap(),
-            WriteFlags::empty(),
-        )
-        .unwrap();
-        // Store the body.
-        txn.put(
-            *test_fixture.db(Some(BlockBodyDatabase::db_name())).unwrap(),
-            &block_header.body_hash,
-            &bincode::serialize(&block_body).unwrap(),
-            WriteFlags::empty(),
-        )
-        .unwrap();
-        // Store the deploy metadata.
-        txn.put(
-            *test_fixture
-                .db(Some(DeployMetadataDatabase::db_name()))
-                .unwrap(),
-            &deploy_hash,
-            &[0u8, 1u8, 2u8],
-            WriteFlags::empty(),
-        )
-        .unwrap();
-
+        execution_results_db
+            .put_raw(
+                &mut txn,
+                serialize_bytesrepr(&transaction_hash).unwrap(),
+                vec![0u8, 1u8, 2u8],
+                false,
+            )
+            .unwrap();
         txn.commit().unwrap();
     };
-
-    assert!(
-        matches!(remove_block(test_fixture.tmp_dir.path(), block_hash).unwrap_err(), Error::ExecutionResultsParsing(actual_block_hash, actual_deploy_hash, _) if block_hash == actual_block_hash && deploy_hash == actual_deploy_hash)
-    );
+    assert!(matches!(
+        remove_block(fixture.tmp_dir.path(), *block.hash()).unwrap_err(),
+        Error::DatabaseLayer(DatabaseError::Parsing(_, _))
+    ));
 }
-*/

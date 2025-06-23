@@ -78,6 +78,16 @@ impl EraWeights {
         self.era_id = era_id;
         Ok(self.era_after_upgrade)
     }
+
+    #[cfg(test)]
+    pub(crate) fn era_id(&self) -> EraId {
+        self.era_id
+    }
+
+    #[cfg(test)]
+    pub(crate) fn weights_mut(&mut self) -> &mut BTreeMap<PublicKey, U512> {
+        &mut self.weights
+    }
 }
 
 /// Creates a collection of indices to store lookup information for a given
@@ -94,7 +104,7 @@ pub(crate) fn initialize_indices(
         Some(entry_count) => Some(
             ProgressTracker::new(
                 entry_count,
-                Box::new(|completion| info!("Header database parsing {}% complete...", completion)),
+                Box::new(|completion| info!("Header database parsing {completion}% complete...")),
             )
             .map_err(|_| Error::EmptyDatabase)?,
         ),
@@ -104,63 +114,64 @@ pub(crate) fn initialize_indices(
         }
     };
 
-    {
-        let mut last_blocks_before_upgrade: BTreeMap<ProtocolVersion, u64> = BTreeMap::default();
-        // Iterate through all block headers.
-        for maybe_result in header_db.iter_all(&txn).map_err(Error::from)? {
-            if let Some(progress_tracker) = maybe_progress_tracker.as_mut() {
-                progress_tracker.advance_by(1);
-            }
-            match maybe_result {
-                Ok((_, block_header)) => {
-                    let block_hash = block_header.block_hash();
-                    let block_height = block_header.height();
-                    // We store all switch block hashes keyed by the era for which they
-                    // hold the weights.
-                    if block_header.is_switch_block() {
-                        let _ = indices
-                            .switch_blocks
-                            .insert(block_header.era_id().successor(), block_hash);
-                        // Store the highest switch block height for each protocol
-                        // version we encounter.
-                        match last_blocks_before_upgrade.entry(block_header.protocol_version()) {
-                            Entry::Vacant(vacant_entry) => {
-                                vacant_entry.insert(block_height);
-                            }
-                            Entry::Occupied(mut occupied_entry) => {
-                                if *occupied_entry.get() < block_height {
-                                    occupied_entry.insert(block_height);
-                                }
+    let mut last_blocks_before_upgrade: BTreeMap<ProtocolVersion, u64> = BTreeMap::default();
+    // Iterate through all block headers.
+    for maybe_result in header_db.iter_all(&txn).map_err(Error::from)? {
+        if let Some(progress_tracker) = maybe_progress_tracker.as_mut() {
+            progress_tracker.advance_by(1);
+        }
+        match maybe_result {
+            Ok((_, block_header)) => {
+                let block_header = block_header.clone();
+                let block_hash = block_header.block_hash();
+                let block_height = block_header.height();
+                // We store all switch block hashes keyed by the era for which they
+                // hold the weights.
+                if block_header.is_switch_block() {
+                    let _ = indices
+                        .switch_blocks
+                        .insert(block_header.era_id().successor(), block_hash);
+                    // Store the highest switch block height for each protocol
+                    // version we encounter.
+                    let protocol_version = block_header.protocol_version();
+                    match last_blocks_before_upgrade.entry(protocol_version) {
+                        Entry::Vacant(vacant_entry) => {
+                            vacant_entry.insert(block_height);
+                        }
+                        Entry::Occupied(mut occupied_entry) => {
+                            if *occupied_entry.get() < block_height {
+                                occupied_entry.insert(block_height);
                             }
                         }
                     }
-                    // If this block is on our list, store its hash and header in the
-                    // indices. We store the header to avoid looking it up again in the
-                    // future since we know we will need it and we expect
-                    // `needed_heights` to be a relatively small list.
-                    if needed_heights.contains(&block_height)
-                        && indices
-                            .heights
-                            .insert(block_height, (block_hash, block_header))
-                            .is_some()
-                    {
-                        return Err(Error::DuplicateBlock(block_height));
-                    };
                 }
-                Err(err) => {
-                    error!("Skipping block header because deserialization failed: {err}");
-                    continue;
-                }
+                // If this block is on our list, store its hash and header in the
+                // indices. We store the header to avoid looking it up again in the
+                // future since we know we will need it and we expect
+                // `needed_heights` to be a relatively small list.
+                if needed_heights.contains(&block_height)
+                    && indices
+                        .heights
+                        .insert(block_height, (block_hash, block_header))
+                        .is_some()
+                {
+                    return Err(Error::DuplicateBlock(block_height));
+                };
+            }
+            Err(err) => {
+                error!("Skipping block header because deserialization failed: {err}");
+                continue;
             }
         }
-        // Remove the entry for the highest known protocol version as it hasn't
-        // had an upgrade yet.
-        let _ = last_blocks_before_upgrade.pop_last();
-        // Store the heights of the relevant switch blocks in the indices.
-        indices
-            .switch_blocks_before_upgrade
-            .extend(last_blocks_before_upgrade.into_values());
     }
+    // Remove the entry for the highest known protocol version as it hasn't
+    // had an upgrade yet.
+    let _ = last_blocks_before_upgrade.pop_last();
+    // Store the heights of the relevant switch blocks in the indices.
+    indices
+        .switch_blocks_before_upgrade
+        .extend(last_blocks_before_upgrade.into_values());
+
     txn.commit()?;
     Ok(indices)
 }
@@ -190,19 +201,9 @@ pub(crate) fn purge_signatures_for_blocks(
     let mut progress_tracker = ProgressTracker::new(
         heights_to_visit.len(),
         Box::new(if full_purge {
-            |completion| {
-                info!(
-                    "Signature purging to no finality {}% complete...",
-                    completion
-                )
-            }
+            |completion| info!("Signature purging to no finality {completion}% complete...")
         } else {
-            |completion| {
-                info!(
-                    "Signature purging to weak finality {}% complete...",
-                    completion
-                )
-            }
+            |completion| info!("Signature purging to weak finality {completion}% complete...")
         }),
     )
     .map_err(|_| Error::EmptyBlockList)?;
