@@ -11,7 +11,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-20.04
+          - os: ubuntu-22.04
             code_name: focal
 
     runs-on: ${{ matrix.os }}
@@ -62,9 +62,9 @@ jobs:
           PLUGIN_REGION: ${{ secrets.APTLY_REGION }}
           PLUGIN_GPG_KEY: ${{ secrets.APTLY_GPG_KEY }}
           PLUGIN_GPG_PASS: ${{ secrets.APTLY_GPG_PASS }}
-          PLUGIN_ACL: 'public-read'
-          PLUGIN_PREFIX: 'releases'
-          PLUGIN_DEB_PATH: './target/debian'
+          PLUGIN_ACL: "public-read"
+          PLUGIN_PREFIX: "releases"
+          PLUGIN_DEB_PATH: "./target/debian"
           PLUGIN_OS_CODENAME: ${{ matrix.code_name }}
         run: ./ci/publish_deb_to_repo.sh
 
@@ -76,4 +76,3 @@ jobs:
           AWS_REGION: ${{ secrets.APTLY_REGION }}
           AWS_ACCESS_KEY_ID: ${{ secrets.APTLY_ACCESS_KEY }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.APTLY_SECRET_KEY }}
-

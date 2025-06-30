@@ -5,25 +5,23 @@ pub(crate) mod test_utils;
 
 use std::{fs::OpenOptions, process};
 
-use clap::{crate_description, crate_name, crate_version, Arg, Command};
+use clap::{Arg, Command, crate_description, crate_name, crate_version};
 use log::error;
 
 use subcommands::{
-    archive, check, execution_results_summary, extract_slice, latest_block_summary,
-    purge_signatures, remove_block, trie_compact, unsparse, Error,
+    Error, check, execution_results_summary, extract_slice, latest_block_summary, purge_signatures,
+    remove_block, trie_compact, unsparse,
 };
 
 const LOGGING: &str = "logging";
 
 enum DisplayOrder {
-    Archive,
     Check,
     ExecutionResults,
     ExtractSlice,
     LatestBlock,
     PurgeSignatures,
     RemoveBlock,
-    TrieCompact,
     Unsparse,
 }
 
@@ -32,8 +30,7 @@ const VERSION_STRING: &str = concat!(
     "\n",
     "This version of ",
     crate_name!(),
-    " is compatible with casper-node version ",
-    env!("CASPER_NODE_VERSION")
+    " is compatible with casper-node version 2.0.0",
 );
 
 fn cli() -> Command<'static> {
@@ -41,7 +38,6 @@ fn cli() -> Command<'static> {
         .version(VERSION_STRING)
         .about(crate_description!())
         .arg_required_else_help(true)
-        .subcommand(archive::command(DisplayOrder::Archive as usize))
         .subcommand(check::command(DisplayOrder::Check as usize))
         .subcommand(execution_results_summary::command(
             DisplayOrder::ExecutionResults as usize,
@@ -54,7 +50,6 @@ fn cli() -> Command<'static> {
             DisplayOrder::PurgeSignatures as usize,
         ))
         .subcommand(remove_block::command(DisplayOrder::RemoveBlock as usize))
-        .subcommand(trie_compact::command(DisplayOrder::TrieCompact as usize))
         .subcommand(unsparse::command(DisplayOrder::Unsparse as usize))
         .arg(
             Arg::new(LOGGING)
@@ -92,7 +87,7 @@ fn main() {
     });
 
     let result: Result<(), Error> = match subcommand_name {
-        archive::COMMAND_NAME => archive::run(matches).map_err(Error::from),
+        //archive::COMMAND_NAME => archive::run(matches).map_err(Error::from),
         check::COMMAND_NAME => check::run(matches).map_err(Error::from),
         execution_results_summary::COMMAND_NAME => {
             execution_results_summary::run(matches).map_err(Error::from)

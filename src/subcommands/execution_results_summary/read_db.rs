@@ -3,111 +3,104 @@ use std::{
     io::{self, Write},
     path::Path,
     result::Result,
+    sync::Arc,
 };
 
-use lmdb::{Cursor, Environment, Transaction};
-use log::{info, warn};
+use lmdb::Environment;
+use log::{error, info, warn};
 use serde_json::{self, Error as JsonSerializationError};
 
-use casper_node::types::{BlockHash, BlockHeader, DeployMetadata};
+use casper_types::{BlockHash, TransactionHash};
 
 use crate::common::{
     db::{
-        self, BlockBodyDatabase, BlockHeaderDatabase, Database, DeployMetadataDatabase,
         STORAGE_FILE_NAME,
+        databases::{block_body_database, block_header_database, execution_results_database},
+        db_env,
     },
-    lmdb_utils,
     progress::ProgressTracker,
 };
 
 use super::{
-    block_body::BlockBody,
-    summary::{ExecutionResultsStats, ExecutionResultsSummary},
     Error,
+    summary::{ExecutionResultsStats, ExecutionResultsSummary},
 };
 
 fn get_execution_results_stats(
-    env: &Environment,
+    env: Arc<Environment>,
     log_progress: bool,
 ) -> Result<ExecutionResultsStats, Error> {
     let txn = env.begin_ro_txn()?;
-    let block_header_db = unsafe { txn.open_db(Some(BlockHeaderDatabase::db_name()))? };
-    let block_body_db = unsafe { txn.open_db(Some(BlockBodyDatabase::db_name()))? };
-    let deploy_metadata_db = unsafe { txn.open_db(Some(DeployMetadataDatabase::db_name()))? };
+    let block_header_db = block_header_database();
+    let block_body_db = block_body_database();
+    let metadata_db = execution_results_database();
 
-    let maybe_entry_count = lmdb_utils::entry_count(&txn, block_header_db).ok();
+    let entry_count = block_header_db.entry_count(&txn).map_err(Error::from)?;
     let mut maybe_progress_tracker = None;
-
     let mut stats = ExecutionResultsStats::default();
-    if let Ok(mut cursor) = txn.open_ro_cursor(block_header_db) {
-        if log_progress {
-            match maybe_entry_count {
-                Some(entry_count) => {
-                    match ProgressTracker::new(
-                        entry_count,
-                        Box::new(|completion| {
-                            info!("Database parsing {}% complete...", completion)
-                        }),
-                    ) {
-                        Ok(progress_tracker) => maybe_progress_tracker = Some(progress_tracker),
-                        Err(progress_tracker_error) => warn!(
-                            "Couldn't initialize progress tracker: {}",
-                            progress_tracker_error
-                        ),
-                    }
-                }
-                None => warn!("Unable to count db entries, progress will not be logged."),
-            }
+    if log_progress {
+        match ProgressTracker::new(
+            entry_count,
+            Box::new(|completion| info!("Database parsing {}% complete...", completion)),
+        ) {
+            Ok(progress_tracker) => maybe_progress_tracker = Some(progress_tracker),
+            Err(progress_tracker_error) => warn!(
+                "Couldn't initialize progress tracker: {}",
+                progress_tracker_error
+            ),
         }
+    }
 
-        // Go through all the block headers in the database.
-        for (idx, (block_hash_raw, raw_val)) in cursor.iter().enumerate() {
-            // Deserialize the block hash.
-            let block_hash = BlockHash::new(
-                block_hash_raw
-                    .try_into()
-                    .map_err(|_| Error::InvalidKey(idx))?,
-            );
-            // Deserialize the header.
-            let header: BlockHeader = bincode::deserialize(raw_val).map_err(|bincode_err| {
-                Error::Parsing(
-                    block_hash,
-                    BlockHeaderDatabase::db_name().to_string(),
-                    bincode_err,
-                )
-            })?;
-            // Get the body hash for this block.
-            let block_body_raw = txn.get(block_body_db, header.body_hash())?;
-            // Get the body of this block.
-            let block_body: BlockBody =
-                bincode::deserialize(block_body_raw).map_err(|bincode_err| {
-                    Error::Parsing(
-                        block_hash,
-                        BlockBodyDatabase::db_name().to_string(),
-                        bincode_err,
-                    )
-                })?;
+    // Go through all the block headers in the database.
+    for (idx, maybe_result) in (block_header_db.iter_all(&txn).map_err(Error::from)?).enumerate() {
+        let (block_hash_raw, block_header) = maybe_result.map_err(Error::from)?;
+        // Deserialize the block hash.
+        let block_hash = BlockHash::new(
+            block_hash_raw
+                .as_slice()
+                .try_into()
+                .map_err(|_| Error::InvalidKey(idx))?,
+        );
+        // Get the body hash for this block.
+        let block_body = block_body_db
+            .get(&txn, block_header.body_hash())
+            .map_err(Error::from)?;
 
+        if let Some(block_body) = block_body {
             // Set of execution results of this block.
             let mut execution_results = vec![];
 
             // Go through all the deploys in this block and get the execution
             // result of each one.
-            for deploy_hash in block_body.deploy_hashes() {
-                // Get this deploy's metadata.
-                let metadata_raw = txn.get(deploy_metadata_db, &deploy_hash)?;
-                let mut metadata: DeployMetadata =
-                    bincode::deserialize(metadata_raw).map_err(|bincode_err| {
-                        Error::Parsing(
-                            block_hash,
-                            DeployMetadataDatabase::db_name().to_string(),
-                            bincode_err,
-                        )
-                    })?;
-                // Extract the execution result of this deploy for the current block.
-                if let Some(execution_result) = metadata.execution_results.remove(&block_hash) {
-                    // Add it to this block's set of execution results.
-                    execution_results.push(execution_result);
+            match block_body {
+                casper_types::BlockBody::V1(block_body_v1) => {
+                    for deploy_hash in block_body_v1.deploy_hashes() {
+                        // Get this deploy's metadata.
+                        let execution_result = metadata_db
+                            .get(&txn, &TransactionHash::Deploy(*deploy_hash))
+                            .map_err(Error::from)?;
+                        if let Some(execution_result) = execution_result {
+                            execution_results.push(execution_result);
+                        } else {
+                            error!("Not found metadata for deploy {}", deploy_hash);
+                            return Err(Error::Database(lmdb::Error::NotFound));
+                        };
+                    }
+                }
+                casper_types::BlockBody::V2(block_body_v2) => {
+                    for txs in block_body_v2.transactions().values() {
+                        for tx_hash in txs {
+                            // Get this deploy's metadata.
+                            let execution_result =
+                                metadata_db.get(&txn, tx_hash).map_err(Error::from)?;
+                            if let Some(execution_result) = execution_result {
+                                execution_results.push(execution_result);
+                            } else {
+                                error!("Not found metadata for transaction {}", tx_hash);
+                                return Err(Error::Database(lmdb::Error::NotFound));
+                            };
+                        }
+                    }
                 }
             }
 
@@ -117,8 +110,12 @@ fn get_execution_results_stats(
             if let Some(progress_tracker) = maybe_progress_tracker.as_mut() {
                 progress_tracker.advance_by(1);
             }
+        } else {
+            error!("Not found block body for header with hash {}", block_hash);
+            return Err(Error::Database(lmdb::Error::NotFound));
         }
     }
+
     Ok(stats)
 }
 
@@ -135,7 +132,7 @@ pub fn execution_results_summary<P1: AsRef<Path>, P2: AsRef<Path>>(
     overwrite: bool,
 ) -> Result<(), Error> {
     let storage_path = db_path.as_ref().join(STORAGE_FILE_NAME);
-    let env = db::db_env(storage_path)?;
+    let env = db_env(storage_path)?;
     let mut log_progress = false;
     // Validate the output file early so that, in case this fails
     // we don't unnecessarily read the whole database.
@@ -150,7 +147,7 @@ pub fn execution_results_summary<P1: AsRef<Path>, P2: AsRef<Path>>(
         Box::new(io::stdout())
     };
 
-    let execution_results_stats = get_execution_results_stats(&env, log_progress)?;
+    let execution_results_stats = get_execution_results_stats(Arc::new(env), log_progress)?;
     let execution_results_summary: ExecutionResultsSummary = execution_results_stats.into();
     dump_execution_results_summary(&execution_results_summary, out_writer)?;
 

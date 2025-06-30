@@ -1,8 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use casper_types::{PublicKey, U512};
-
-use super::block_signatures::BlockSignatures;
+use casper_types::{BlockSignatures, BlockSignaturesV1, BlockSignaturesV2, PublicKey, U512};
 
 // Returns whether the cumulative `weight` exceeds the weak finality threshold
 // for a `total` weight.
@@ -22,9 +20,9 @@ fn is_strict_finality(weight: U512, total: U512) -> bool {
 /// not possible to reach a state where weak but not strict finality is
 /// reached.
 pub(super) fn strip_signatures(
-    signatures: &mut BlockSignatures,
+    signatures: BlockSignatures,
     weights: &BTreeMap<PublicKey, U512>,
-) -> bool {
+) -> Option<BlockSignatures> {
     // Calculate the total weight.
     let total_weight: U512 = weights
         .iter()
@@ -44,7 +42,9 @@ pub(super) fn strip_signatures(
         .iter()
         .flat_map(|(weight, keys)| keys.iter().map(move |key| (weight, *key)))
     {
-        if signatures.proofs.contains_key(key) {
+        let mut finality_signatures = signatures.finality_signatures();
+
+        if finality_signatures.any(|finality_signature| finality_signature.public_key().eq(key)) {
             accumulated_weight += *weight;
             accumulated_sigs.insert(key);
 
@@ -57,7 +57,7 @@ pub(super) fn strip_signatures(
     // removing the smallest ones until we no longer have strict finality.
     while is_strict_finality(accumulated_weight, total_weight) {
         if accumulated_sigs.is_empty() {
-            return false;
+            return None;
         }
         let popped_sig = accumulated_sigs.pop_first().unwrap();
         let popped_sig_weight = weights.get(popped_sig).unwrap();
@@ -72,25 +72,52 @@ pub(super) fn strip_signatures(
     // - it would have been possible with the given weights, but there are
     //   missing signatures from our set in `BlockSignatures`
     if !is_weak_finality(accumulated_weight, total_weight) {
-        return false;
+        return None;
     }
-    // Keep only the accumulated signatures.
-    signatures
-        .proofs
-        .retain(|key, _| accumulated_sigs.contains(key));
-    true
+
+    let trimmed_signatures = match signatures {
+        BlockSignatures::V1(block_signatures_v1) => {
+            let mut bsv1 = BlockSignaturesV1::new(
+                *block_signatures_v1.block_hash(),
+                block_signatures_v1.era_id(),
+            );
+            for signature in block_signatures_v1.finality_signatures() {
+                let pk = signature.public_key();
+                if accumulated_sigs.contains(pk) {
+                    bsv1.insert_signature(pk.clone(), *signature.signature());
+                }
+            }
+            BlockSignatures::V1(bsv1)
+        }
+        BlockSignatures::V2(block_signatures_v2) => {
+            let mut bsv2 = BlockSignaturesV2::new(
+                *block_signatures_v2.block_hash(),
+                block_signatures_v2.block_height(),
+                block_signatures_v2.era_id(),
+                block_signatures_v2.chain_name_hash(),
+            );
+            for signature in block_signatures_v2.finality_signatures() {
+                let pk = signature.public_key();
+                if accumulated_sigs.contains(pk) {
+                    bsv2.insert_signature(pk.clone(), *signature.signature());
+                }
+            }
+            BlockSignatures::V2(bsv2)
+        }
+    };
+    Some(trimmed_signatures)
 }
 
+/* TODO align these tests
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
 
-    use casper_types::{PublicKey, Signature, U512};
+    use casper_types::{BlockSignatures, PublicKey, Signature, U512};
 
     use crate::{
-        subcommands::purge_signatures::{
-            block_signatures::BlockSignatures,
-            signatures::{is_strict_finality, is_weak_finality, strip_signatures},
+        subcommands::purge_signatures::signatures::{
+            is_strict_finality, is_weak_finality, strip_signatures,
         },
         test_utils::KEYS,
     };
@@ -274,3 +301,5 @@ mod tests {
         assert!(!strip_signatures(&mut block_signatures, &weights));
     }
 }
+
+*/

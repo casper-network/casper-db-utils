@@ -1,43 +1,27 @@
-mod block_body_db;
-mod block_body_merkle_db;
-mod block_header_db;
-mod block_metadata_db;
-mod deploy_hashes_db;
-mod deploy_metadata_db;
-mod deploys_db;
-mod finalized_approvals_db;
-mod proposers_db;
+pub(crate) mod blocks_index;
+pub(crate) mod databases;
 mod state_store_db;
 #[cfg(test)]
 mod tests;
-mod transfer_db;
-mod transfer_hashes_db;
-
-pub use block_body_db::BlockBodyDatabase;
-pub use block_body_merkle_db::BlockBodyMerkleDatabase;
-pub use block_header_db::BlockHeaderDatabase;
-pub use block_metadata_db::BlockMetadataDatabase;
-pub use deploy_hashes_db::DeployHashesDatabase;
-pub use deploy_metadata_db::DeployMetadataDatabase;
-pub use deploys_db::DeployDatabase;
-pub use finalized_approvals_db::FinalizedApprovalsDatabase;
-pub use proposers_db::ProposerDatabase;
-pub use state_store_db::StateStoreDatabase;
-pub use transfer_db::TransferDatabase;
-pub use transfer_hashes_db::TransferHashesDatabase;
-
-use std::{
-    fmt::{Display, Formatter, Result as FormatterResult},
-    path::Path,
-    result::Result,
-};
+mod versioned_database;
 
 use bincode::Error as BincodeError;
-use lmdb::{Cursor, Environment, EnvironmentFlags, Error as LmdbError, RoCursor, Transaction};
-use log::info;
-use thiserror::Error;
-
+use casper_types::bytesrepr;
 use casper_types::bytesrepr::Error as BytesreprError;
+use lmdb::Error as LmdbError;
+use lmdb::Transaction as LmdbTransaction;
+use lmdb::{Cursor, Environment, EnvironmentFlags, RoCursor};
+use log::{error, info};
+pub use state_store_db::StateStoreDatabase;
+use std::path::Path;
+use std::{
+    fmt::{Display, Formatter, Result as FormatterResult},
+    result::Result,
+};
+use thiserror::Error;
+#[cfg(test)]
+pub(crate) use versioned_database::MockData;
+pub(crate) use versioned_database::VersionedDatabases;
 
 pub const STORAGE_FILE_NAME: &str = "storage.lmdb";
 pub const TRIE_STORE_FILE_NAME: &str = "data.lmdb";
@@ -63,23 +47,28 @@ impl From<BytesreprError> for DeserializationError {
 pub enum Error {
     /// Errors accumulated when parsing a database with "--no-failfast".
     Accumulated(Vec<Self>),
-    /// Parsing error on entry at index in the database.
     Parsing(usize, DeserializationError),
     /// Database operation error.
     Database(#[from] LmdbError),
+    Bytesrepr(bytesrepr::Error),
+    Bincode(bincode::Error),
 }
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> FormatterResult {
         match self {
-            Self::Database(e) => write!(f, "Error operating the database: {e}"),
-            Self::Parsing(idx, inner) => write!(f, "Error parsing element {idx}: {inner}"),
-            Self::Accumulated(accumulated_errors) => {
+            Error::Database(e) => write!(f, "Error operating the database: {e}"),
+            Error::Parsing(idx, inner) => write!(f, "Error parsing element {idx}: {inner}"),
+            Error::Accumulated(accumulated_errors) => {
                 writeln!(f, "Errors caught:")?;
                 for error in accumulated_errors {
                     writeln!(f, "{error}")?;
                 }
                 Ok(())
+            }
+            Error::Bytesrepr(error) => write!(f, "Error when deserializing bytesrepr: {error}"),
+            Error::Bincode(error_kind) => {
+                write!(f, "Error when deserializing bincode: {error_kind}")
             }
         }
     }
@@ -109,7 +98,17 @@ pub trait Database {
             info!("Skipping {} entries.", start_at);
         }
         let mut error_buffer = vec![];
-        for (idx, (_raw_key, raw_val)) in cursor.iter().skip(start_at).enumerate() {
+        for (idx, r) in cursor.iter().skip(start_at).enumerate() {
+            if let Err(e) = r {
+                if failfast {
+                    return Err(Error::Database(e));
+                } else {
+                    error_buffer.push(Error::Database(e));
+                    continue;
+                }
+            };
+            let (_raw_key, raw_val) = r.unwrap();
+
             if let Err(e) =
                 Self::parse_element(raw_val).map_err(|parsing_err| Error::Parsing(idx, parsing_err))
             {

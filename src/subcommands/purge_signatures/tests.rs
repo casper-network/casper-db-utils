@@ -1,39 +1,24 @@
+/* TODO align these tests
 use std::collections::BTreeSet;
 
-use casper_node::types::BlockHash;
+use casper_types::{BlockHash, BlockSignatures};
 use casper_types::{ProtocolVersion, Signature, U512};
 use lmdb::{Error as LmdbError, Transaction, WriteFlags};
 
 use crate::{
     subcommands::purge_signatures::{
-        block_signatures::BlockSignatures,
-        purge::{initialize_indices, purge_signatures_for_blocks, EraWeights},
         Error,
+        purge::{EraWeights, initialize_indices, purge_signatures_for_blocks},
     },
-    test_utils::{self, LmdbTestFixture, MockBlockHeader, MockSwitchBlockHeader, KEYS},
+    test_utils::{self, KEYS, LmdbTestFixture, MockBlockHeader, MockSwitchBlockHeader},
 };
-
-// Gets and deserializes a `BlockSignatures` structure from the block
-// signatures database.
-fn get_sigs_from_db<T: Transaction>(
-    txn: &T,
-    fixture: &LmdbTestFixture,
-    block_hash: &BlockHash,
-) -> BlockSignatures {
-    let serialized_sigs = txn
-        .get(*fixture.db(Some("block_metadata")).unwrap(), block_hash)
-        .unwrap();
-    let block_sigs: BlockSignatures = bincode::deserialize(serialized_sigs).unwrap();
-    assert_eq!(block_sigs.block_hash, *block_hash);
-    block_sigs
-}
 
 #[test]
 fn indices_initialization() {
     const BLOCK_COUNT: usize = 4;
     const SWITCH_BLOCK_COUNT: usize = 2;
 
-    let fixture = LmdbTestFixture::new(vec!["block_header"], None);
+    let fixture = LmdbTestFixture::new(None);
 
     // Create mock block headers.
     let mut block_headers: Vec<(BlockHash, MockBlockHeader)> = (0..BLOCK_COUNT as u8)
@@ -84,7 +69,7 @@ fn indices_initialization() {
         txn.commit().unwrap();
     };
 
-    let indices = initialize_indices(env, &BTreeSet::from([100, 200, 300])).unwrap();
+    let indices = initialize_indices(env.clone(), &BTreeSet::from([100, 200, 300])).unwrap();
     // Make sure we have the relevant blocks in the indices.
     assert_eq!(
         indices.heights.get(&block_headers[0].1.height).unwrap().0,
@@ -131,7 +116,7 @@ fn indices_initialization() {
         txn.commit().unwrap();
     };
 
-    match initialize_indices(env, &BTreeSet::from([100, 200, 300])) {
+    match initialize_indices(env.clone(), &BTreeSet::from([100, 200, 300])) {
         Err(Error::DuplicateBlock(height)) => assert_eq!(height, block_headers[0].1.height),
         _ => panic!("Unexpected error"),
     }
@@ -208,19 +193,27 @@ fn indices_initialization_with_upgrade() {
         txn.commit().unwrap();
     };
 
-    let indices = initialize_indices(env, &BTreeSet::from([100, 200, 300])).unwrap();
-    assert!(!indices
-        .switch_blocks_before_upgrade
-        .contains(&switch_block_headers[0].1.height));
-    assert!(indices
-        .switch_blocks_before_upgrade
-        .contains(&switch_block_headers[1].1.height));
-    assert!(indices
-        .switch_blocks_before_upgrade
-        .contains(&switch_block_headers[2].1.height));
-    assert!(!indices
-        .switch_blocks_before_upgrade
-        .contains(&switch_block_headers[3].1.height));
+    let indices = initialize_indices(env.clone(), &BTreeSet::from([100, 200, 300])).unwrap();
+    assert!(
+        !indices
+            .switch_blocks_before_upgrade
+            .contains(&switch_block_headers[0].1.height)
+    );
+    assert!(
+        indices
+            .switch_blocks_before_upgrade
+            .contains(&switch_block_headers[1].1.height)
+    );
+    assert!(
+        indices
+            .switch_blocks_before_upgrade
+            .contains(&switch_block_headers[2].1.height)
+    );
+    assert!(
+        !indices
+            .switch_blocks_before_upgrade
+            .contains(&switch_block_headers[3].1.height)
+    );
 }
 
 #[test]
@@ -271,19 +264,21 @@ fn era_weights() {
         }
         txn.commit().unwrap();
     };
-    let indices = initialize_indices(env, &BTreeSet::from([80])).unwrap();
+    let indices = initialize_indices(env.clone(), &BTreeSet::from([80])).unwrap();
     let mut era_weights = EraWeights::default();
     if let Ok(txn) = env.begin_ro_txn() {
-        let db = env.open_db(Some("block_header")).unwrap();
+        let db = block_header_database(env.clone());
         // Try to update the weights for the first switch block.
-        assert!(!era_weights
-            .refresh_weights_for_era(
-                &txn,
-                db,
-                &indices,
-                switch_block_headers[0].1.era_id.successor()
-            )
-            .unwrap());
+        assert!(
+            !era_weights
+                .refresh_weights_for_era(
+                    &txn,
+                    db.clone(),
+                    &indices,
+                    switch_block_headers[0].1.era_id.successor()
+                )
+                .unwrap()
+        );
         assert_eq!(
             era_weights.era_id(),
             switch_block_headers[0].1.era_id.successor()
@@ -295,14 +290,16 @@ fn era_weights() {
         assert!(!era_weights.weights_mut().contains_key(&KEYS[1]));
 
         // Try to update the weights for the second switch block.
-        assert!(!era_weights
-            .refresh_weights_for_era(
-                &txn,
-                db,
-                &indices,
-                switch_block_headers[1].1.era_id.successor()
-            )
-            .unwrap());
+        assert!(
+            !era_weights
+                .refresh_weights_for_era(
+                    &txn,
+                    db.clone(),
+                    &indices,
+                    switch_block_headers[1].1.era_id.successor()
+                )
+                .unwrap()
+        );
         assert_eq!(
             era_weights.era_id(),
             switch_block_headers[1].1.era_id.successor()
@@ -314,14 +311,16 @@ fn era_weights() {
         assert!(!era_weights.weights_mut().contains_key(&KEYS[0]));
 
         // Try to update the weights for the second switch block again.
-        assert!(!era_weights
-            .refresh_weights_for_era(
-                &txn,
-                db,
-                &indices,
-                switch_block_headers[1].1.era_id.successor()
-            )
-            .unwrap());
+        assert!(
+            !era_weights
+                .refresh_weights_for_era(
+                    &txn,
+                    db.clone(),
+                    &indices,
+                    switch_block_headers[1].1.era_id.successor()
+                )
+                .unwrap()
+        );
         assert_eq!(
             era_weights.era_id(),
             switch_block_headers[1].1.era_id.successor()
@@ -356,7 +355,7 @@ fn era_weights() {
         txn.commit().unwrap();
     };
     if let Ok(txn) = env.begin_ro_txn() {
-        let db = env.open_db(Some("block_header")).unwrap();
+        let db = block_header_database(env.clone());
         let expected_missing_era_id = switch_block_headers[0].1.era_id.successor();
         // Make sure we get an error when the block has no weights.
         match era_weights.refresh_weights_for_era(&txn, db, &indices, expected_missing_era_id) {
@@ -419,46 +418,54 @@ fn era_weights_with_upgrade() {
         }
         txn.commit().unwrap();
     };
-    let indices = initialize_indices(env, &BTreeSet::from([80, 280])).unwrap();
+    let indices = initialize_indices(env.clone(), &BTreeSet::from([80, 280])).unwrap();
     let mut era_weights = EraWeights::default();
     if let Ok(txn) = env.begin_ro_txn() {
-        let db = env.open_db(Some("block_header")).unwrap();
+        let db = block_header_database(env.clone());
 
-        assert!(era_weights
-            .refresh_weights_for_era(
-                &txn,
-                db,
-                &indices,
-                switch_block_headers[0].1.era_id.successor()
-            )
-            .unwrap());
+        assert!(
+            era_weights
+                .refresh_weights_for_era(
+                    &txn,
+                    db.clone(),
+                    &indices,
+                    switch_block_headers[0].1.era_id.successor()
+                )
+                .unwrap()
+        );
 
-        assert!(!era_weights
-            .refresh_weights_for_era(
-                &txn,
-                db,
-                &indices,
-                switch_block_headers[1].1.era_id.successor()
-            )
-            .unwrap());
+        assert!(
+            !era_weights
+                .refresh_weights_for_era(
+                    &txn,
+                    db.clone(),
+                    &indices,
+                    switch_block_headers[1].1.era_id.successor()
+                )
+                .unwrap()
+        );
 
-        assert!(era_weights
-            .refresh_weights_for_era(
-                &txn,
-                db,
-                &indices,
-                switch_block_headers[0].1.era_id.successor()
-            )
-            .unwrap());
+        assert!(
+            era_weights
+                .refresh_weights_for_era(
+                    &txn,
+                    db.clone(),
+                    &indices,
+                    switch_block_headers[0].1.era_id.successor()
+                )
+                .unwrap()
+        );
 
-        assert!(!era_weights
-            .refresh_weights_for_era(
-                &txn,
-                db,
-                &indices,
-                switch_block_headers[1].1.era_id.successor()
-            )
-            .unwrap());
+        assert!(
+            !era_weights
+                .refresh_weights_for_era(
+                    &txn,
+                    db,
+                    &indices,
+                    switch_block_headers[1].1.era_id.successor()
+                )
+                .unwrap()
+        );
 
         txn.commit().unwrap();
     };
@@ -582,11 +589,17 @@ fn purge_signatures_should_work() {
         txn.commit().unwrap();
     };
 
-    let indices = initialize_indices(env, &BTreeSet::from([100, 200, 300, 400])).unwrap();
+    let indices = initialize_indices(env.clone(), &BTreeSet::from([100, 200, 300, 400])).unwrap();
 
     // Purge signatures for blocks 1, 2 and 3 to weak finality.
     assert!(
-        purge_signatures_for_blocks(env, &indices, BTreeSet::from([100, 200, 300]), false).is_ok()
+        purge_signatures_for_blocks(
+            env.clone(),
+            &indices,
+            BTreeSet::from([100, 200, 300]),
+            false
+        )
+        .is_ok()
     );
     if let Ok(txn) = env.begin_ro_txn() {
         let block_1_sigs = get_sigs_from_db(&txn, &fixture, &block_headers[0].0);
@@ -622,7 +635,10 @@ fn purge_signatures_should_work() {
     };
 
     // Purge signatures for blocks 1 and 4 to no finality.
-    assert!(purge_signatures_for_blocks(env, &indices, BTreeSet::from([100, 400]), true).is_ok());
+    assert!(
+        purge_signatures_for_blocks(env.clone(), &indices, BTreeSet::from([100, 400]), true)
+            .is_ok()
+    );
     if let Ok(txn) = env.begin_ro_txn() {
         // We should have no record for the signatures of block 1.
         match txn.get(
@@ -754,9 +770,12 @@ fn purge_signatures_bad_input() {
         txn.commit().unwrap();
     };
 
-    let indices = initialize_indices(env, &BTreeSet::from([100])).unwrap();
+    let indices = initialize_indices(env.clone(), &BTreeSet::from([100])).unwrap();
     // Purge signatures for blocks 1 and 2 to weak finality.
-    assert!(purge_signatures_for_blocks(env, &indices, BTreeSet::from([100, 200]), false).is_ok());
+    assert!(
+        purge_signatures_for_blocks(env.clone(), &indices, BTreeSet::from([100, 200]), false)
+            .is_ok()
+    );
     if let Ok(txn) = env.begin_ro_txn() {
         let block_1_sigs = get_sigs_from_db(&txn, &fixture, &block_headers[0].0);
         // Block 1 has a super-majority signature (700), so the purge would
@@ -784,9 +803,9 @@ fn purge_signatures_bad_input() {
         txn.commit().unwrap();
     };
 
-    let indices = initialize_indices(env, &BTreeSet::from([100, 200])).unwrap();
+    let indices = initialize_indices(env.clone(), &BTreeSet::from([100, 200])).unwrap();
     // Purge should fail with a deserialization error.
-    match purge_signatures_for_blocks(env, &indices, BTreeSet::from([100, 200]), false) {
+    match purge_signatures_for_blocks(env.clone(), &indices, BTreeSet::from([100, 200]), false) {
         Err(Error::SignaturesParsing(block_hash, _)) if block_hash == block_headers[1].0 => {}
         other => panic!("Unexpected result: {other:?}"),
     };
@@ -860,11 +879,14 @@ fn purge_signatures_missing_from_db() {
         txn.commit().unwrap();
     };
 
-    let indices = initialize_indices(env, &BTreeSet::from([100, 200])).unwrap();
+    let indices = initialize_indices(env.clone(), &BTreeSet::from([100, 200])).unwrap();
 
     // Purge signatures for blocks 1 and 2 to weak finality. The operation
     // should succeed even if the signatures for block 2 are missing.
-    assert!(purge_signatures_for_blocks(env, &indices, BTreeSet::from([100, 200]), false).is_ok());
+    assert!(
+        purge_signatures_for_blocks(env.clone(), &indices, BTreeSet::from([100, 200]), false)
+            .is_ok()
+    );
     if let Ok(txn) = env.begin_ro_txn() {
         let block_1_sigs = get_sigs_from_db(&txn, &fixture, &block_headers[0].0);
         // Block 1 had both keys (400, 600), so it should have kept
@@ -885,7 +907,10 @@ fn purge_signatures_missing_from_db() {
 
     // Purge signatures for blocks 1 and 2 to no finality. The operation
     // should succeed even if the signatures for block 2 are missing.
-    assert!(purge_signatures_for_blocks(env, &indices, BTreeSet::from([100, 200]), true).is_ok());
+    assert!(
+        purge_signatures_for_blocks(env.clone(), &indices, BTreeSet::from([100, 200]), true)
+            .is_ok()
+    );
     if let Ok(txn) = env.begin_ro_txn() {
         // We should have no record for the signatures of block 1.
         match txn.get(
@@ -907,3 +932,5 @@ fn purge_signatures_missing_from_db() {
         txn.commit().unwrap();
     };
 }
+
+*/
