@@ -2,27 +2,28 @@ use crate::common::db::MockData;
 use crate::common::db::{databases::mock_database, versioned_database::VersionedDatabases};
 use crate::test_utils::LmdbTestFixture;
 use casper_types::TransactionHash;
+use casper_types::testing::TestRng;
 use lmdb::{Environment, Transaction};
-use rand::{self, Rng, RngCore, prelude::ThreadRng};
+use rand::{self, Rng, RngCore};
 use serde::{Deserialize, Serialize};
 
-fn gen_bytes(rng: &mut ThreadRng) -> Vec<u8> {
+fn gen_bytes(rng: &mut TestRng) -> Vec<u8> {
     let mock = MockStruct::random(rng);
     bincode::serialize(&mock).unwrap()
 }
 
-fn gen_faulty_bytes(rng: &mut ThreadRng) -> Vec<u8> {
+fn gen_faulty_bytes(rng: &mut TestRng) -> Vec<u8> {
     let mock = FaultyMockStruct::random(rng);
     bincode::serialize(&mock).unwrap()
 }
 
 fn populate_db(env: &Environment, db: &VersionedDatabases<TransactionHash, MockData>) {
-    let mut rng = rand::rng();
-    let entry_count = rng.random_range(10u32..100u32);
+    let mut rng = TestRng::new();
+    let entry_count = rng.gen_range(10u32..100u32);
     let mut rw_tx = env.begin_rw_txn().expect("couldn't begin rw transaction");
     for _ in 0..entry_count {
         let (key, data) = MockData::random(&mut rng);
-        let put_legacy_to_legacy_db = rng.random_bool(0.5);
+        let put_legacy_to_legacy_db = rng.gen_bool(0.5);
         db.put(&mut rw_tx, key, data, put_legacy_to_legacy_db)
             .unwrap();
     }
@@ -30,8 +31,8 @@ fn populate_db(env: &Environment, db: &VersionedDatabases<TransactionHash, MockD
 }
 
 fn populate_faulty_db(env: &Environment, db: &VersionedDatabases<TransactionHash, MockData>) {
-    let mut rng = rand::rng();
-    let entry_count = rng.random_range(10u32..100u32);
+    let mut rng = TestRng::new();
+    let entry_count = rng.gen_range(10u32..100u32);
     let mut rw_tx = env.begin_rw_txn().expect("couldn't begin rw transaction");
     for i in 0..entry_count {
         let bytes = if i % 5 == 0 {
@@ -40,7 +41,7 @@ fn populate_faulty_db(env: &Environment, db: &VersionedDatabases<TransactionHash
             gen_bytes(&mut rng)
         };
         let key: [u8; 4] = i.to_le_bytes();
-        let put_to_legacy = rng.random_bool(0.5);
+        let put_to_legacy = rng.gen_bool(0.5);
         db.put_raw(&mut rw_tx, key.to_vec(), bytes, put_to_legacy)
             .unwrap();
     }
@@ -54,8 +55,8 @@ enum MockEnum {
 }
 
 impl MockEnum {
-    fn random(rng: &mut ThreadRng) -> Self {
-        if rng.random::<u32>() % 2 == 0 {
+    fn random(rng: &mut TestRng) -> Self {
+        if rng.r#gen::<u32>() % 2 == 0 {
             Self::A
         } else {
             let mut buf = [0u8; 32];
@@ -73,12 +74,12 @@ struct MockStruct {
 }
 
 impl MockStruct {
-    fn random(rng: &mut ThreadRng) -> Self {
-        let s = format!("test_string_{}", rng.random::<u64>());
+    fn random(rng: &mut TestRng) -> Self {
+        let s = format!("test_string_{}", rng.r#gen::<u64>());
         Self {
-            a: rng.random::<u32>(),
+            a: rng.r#gen::<u32>(),
             b: s,
-            c: if rng.random::<u32>() % 2 == 0 {
+            c: if rng.r#gen::<u32>() % 2 == 0 {
                 Some(MockEnum::random(rng))
             } else {
                 None
@@ -96,17 +97,17 @@ struct FaultyMockStruct {
 }
 
 impl FaultyMockStruct {
-    fn random(rng: &mut ThreadRng) -> Self {
-        let s = format!("test_string_{}", rng.random::<u64>());
+    fn random(rng: &mut TestRng) -> Self {
+        let s = format!("test_string_{}", rng.r#gen::<u64>());
         Self {
-            a: rng.random::<u32>(),
-            d: if rng.random::<u32>() % 2 == 0 {
-                Some(rng.random::<u32>())
+            a: rng.r#gen::<u32>(),
+            d: if rng.r#gen::<u32>() % 2 == 0 {
+                Some(rng.r#gen::<u32>())
             } else {
                 None
             },
             b: s,
-            c: if rng.random::<u32>() % 2 == 0 {
+            c: if rng.r#gen::<u32>() % 2 == 0 {
                 Some(MockEnum::random(rng))
             } else {
                 None
@@ -117,7 +118,7 @@ impl FaultyMockStruct {
 
 #[test]
 fn sanity_check_ser_deser() {
-    let mut rng = rand::rng();
+    let mut rng = TestRng::new();
     let original = MockStruct::random(&mut rng);
     let ser = bincode::serialize(&original).expect("couldn't serialize");
     let _deser: MockStruct = bincode::deserialize(&ser).expect("couldn't deserialize");

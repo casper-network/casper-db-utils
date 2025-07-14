@@ -41,13 +41,12 @@ fn get_execution_results_stats(
     if log_progress {
         match ProgressTracker::new(
             entry_count,
-            Box::new(|completion| info!("Database parsing {}% complete...", completion)),
+            Box::new(|completion| info!("Database parsing {completion}% complete...")),
         ) {
             Ok(progress_tracker) => maybe_progress_tracker = Some(progress_tracker),
-            Err(progress_tracker_error) => warn!(
-                "Couldn't initialize progress tracker: {}",
-                progress_tracker_error
-            ),
+            Err(progress_tracker_error) => {
+                warn!("Couldn't initialize progress tracker: {progress_tracker_error}")
+            }
         }
     }
 
@@ -82,7 +81,7 @@ fn get_execution_results_stats(
                         if let Some(execution_result) = execution_result {
                             execution_results.push(execution_result);
                         } else {
-                            error!("Not found metadata for deploy {}", deploy_hash);
+                            error!("Not found metadata for deploy {deploy_hash}");
                             return Err(Error::Database(lmdb::Error::NotFound));
                         };
                     }
@@ -96,7 +95,7 @@ fn get_execution_results_stats(
                             if let Some(execution_result) = execution_result {
                                 execution_results.push(execution_result);
                             } else {
-                                error!("Not found metadata for transaction {}", tx_hash);
+                                error!("Not found metadata for transaction {tx_hash}");
                                 return Err(Error::Database(lmdb::Error::NotFound));
                             };
                         }
@@ -111,7 +110,7 @@ fn get_execution_results_stats(
                 progress_tracker.advance_by(1);
             }
         } else {
-            error!("Not found block body for header with hash {}", block_hash);
+            error!("Not found block body for header with hash {block_hash}");
             return Err(Error::Database(lmdb::Error::NotFound));
         }
     }

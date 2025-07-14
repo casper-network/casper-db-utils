@@ -14,12 +14,14 @@ use crate::common::db::{
 use super::Error;
 
 pub(crate) fn create_output_db<P: AsRef<Path>>(output_path: P) -> Result<(), Error> {
-    if output_path.as_ref().exists() {
+    if !output_path.as_ref().exists() {
+        fs::create_dir_all(&output_path)?;
+    }
+    let storage_path = output_path.as_ref().join(STORAGE_FILE_NAME);
+    if storage_path.exists() {
         return Err(Error::Output(ErrorKind::AlreadyExists.into()));
     }
-    fs::create_dir_all(&output_path)?;
 
-    let storage_path = output_path.as_ref().join(STORAGE_FILE_NAME);
     let storage_env = Arc::new(db::db_env(storage_path)?);
 
     block_header_database().create(storage_env.clone())?;
@@ -78,7 +80,7 @@ pub(crate) fn transfer_block_info<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     let block_header = source_block_header_db.get(&source_txn, &block_hash)?;
     if block_header.is_none() {
-        warn!("Couldn't find BlockHeader with hash {}", block_hash);
+        warn!("Couldn't find BlockHeader with hash {block_hash}");
     }
     let block_header = block_header.unwrap();
 
@@ -91,7 +93,7 @@ pub(crate) fn transfer_block_info<P1: AsRef<Path>, P2: AsRef<Path>>(
 
     let block_body = source_block_body_db.get(&source_txn, block_header.body_hash())?;
     if block_body.is_none() {
-        warn!("Couldn't find BlockBody with hash {}", block_hash);
+        warn!("Couldn't find BlockBody with hash {block_hash}");
     }
     let block_body = block_body.unwrap();
 

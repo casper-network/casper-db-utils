@@ -1,16 +1,15 @@
-/* TODO Align the tests with new code
 use std::fs::{self, OpenOptions};
 
-use casper_types::{BlockHeader, BlockHeaderV1};
-use lmdb::{Transaction, WriteFlags};
+use casper_types::{BlockHeader, BlockHeaderV1, PublicKey, SecretKey, testing::TestRng};
+use lmdb::Transaction;
 use once_cell::sync::Lazy;
 use tempfile::{self, NamedTempFile, TempDir};
 
 use super::block_info::BlockInfo;
 use crate::{
-    common::db::STORAGE_FILE_NAME,
+    common::db::{STORAGE_FILE_NAME, databases::block_header_database},
     subcommands::latest_block_summary::{block_info, read_db},
-    test_utils::{LmdbTestFixture, MockBlockHeader},
+    test_utils::{LmdbTestFixture, block_v1, block_v2},
 };
 
 static OUT_DIR: Lazy<TempDir> = Lazy::new(|| tempfile::tempdir().unwrap());
@@ -42,8 +41,6 @@ fn parse_network_name_input() {
 
 #[test]
 fn dump_with_net_name() {
-    /*let json_header = JsonBlockHeader::doc_example().clone();
-    let header: BlockHeader::doc_example() = json_header.into();*/
     let header = BlockHeader::V1(BlockHeaderV1::example().clone());
     let block_info = BlockInfo::new(Some("casper".to_string()), header.block_hash(), header);
     let reference_json = serde_json::to_string_pretty(&block_info).unwrap();
@@ -80,35 +77,39 @@ fn dump_without_net_name() {
 
 #[test]
 fn latest_block_should_succeed() {
+    let mut rng = TestRng::new();
+    let secret_key = SecretKey::ed25519_from_bytes([222; SecretKey::ED25519_LENGTH])
+        .expect("should create secret key");
+    let pk = PublicKey::from(&secret_key);
+
+    let block_v1 = block_v1(&mut rng, vec![]);
+    let block_hash_1 = *block_v1.hash();
+    let block_v2 = block_v2(&mut rng, pk.clone(), vec![]);
+    let block_hash_2 = *block_v2.hash();
     let fixture = LmdbTestFixture::new(Some(STORAGE_FILE_NAME));
     let out_file_path = OUT_DIR.as_ref().join("latest_block_metadata.json");
 
-    // Create 2 block headers, height 0 and 1.
-    let first_block = MockBlockHeader::default();
-    let first_block_key = [0u8; 32];
-
-    let mut second_block = MockBlockHeader::default();
-    let second_block_key = [1u8; 32];
-    second_block.height = 1;
-
-    let env = &fixture.env;
-    let db = fixture.db(Some("block_header")).unwrap();
+    let env = fixture.env;
+    let block_header_db = block_header_database();
+    block_header_db.create(env.clone()).unwrap();
     // Insert the 2 blocks into the database.
     if let Ok(mut txn) = env.begin_rw_txn() {
-        txn.put(
-            *db,
-            &first_block_key,
-            &bincode::serialize(&first_block).unwrap(),
-            WriteFlags::empty(),
-        )
-        .unwrap();
-        txn.put(
-            *db,
-            &second_block_key,
-            &bincode::serialize(&second_block).unwrap(),
-            WriteFlags::empty(),
-        )
-        .unwrap();
+        block_header_db
+            .put(
+                &mut txn,
+                block_hash_2,
+                BlockHeader::V2(block_v2.header().clone()),
+                true,
+            )
+            .unwrap();
+        block_header_db
+            .put(
+                &mut txn,
+                block_hash_1,
+                BlockHeader::V1(block_v1.header().clone()),
+                true,
+            )
+            .unwrap();
         txn.commit().unwrap();
     };
 
@@ -122,12 +123,11 @@ fn latest_block_should_succeed() {
     .unwrap();
     let json_str = fs::read_to_string(&out_file_path).unwrap();
     let block_info: BlockInfo = serde_json::from_str(&json_str).unwrap();
-    let (mock_block_header_deserialized, _network_name) = block_info.into_mock();
-    assert_eq!(mock_block_header_deserialized, second_block);
+    assert_eq!(block_info.block_hash, block_hash_2);
 
     // Delete the second block from the database.
     if let Ok(mut txn) = env.begin_rw_txn() {
-        txn.del(*db, &second_block_key, None).unwrap();
+        block_header_db.del(&mut txn, &block_hash_2).unwrap();
         txn.commit().unwrap();
     };
 
@@ -150,10 +150,10 @@ fn latest_block_should_succeed() {
         false,
     )
     .unwrap();
+
     let json_str = fs::read_to_string(&out_file_path).unwrap();
     let block_info: BlockInfo = serde_json::from_str(&json_str).unwrap();
-    let (mock_block_header_deserialized, _network_name) = block_info.into_mock();
-    assert_eq!(mock_block_header_deserialized, first_block);
+    assert_eq!(block_info.block_hash, block_hash_1);
 }
 
 #[test]
@@ -190,5 +190,3 @@ fn latest_block_existing_output_should_fail() {
         .is_err()
     );
 }
-
-*/

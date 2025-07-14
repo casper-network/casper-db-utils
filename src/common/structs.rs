@@ -20,6 +20,14 @@ pub(crate) struct DeployMetadataV1 {
     pub execution_results: HashMap<BlockHash, ExecutionResultV1>,
 }
 
+#[cfg(test)]
+impl DeployMetadataV1 {
+    pub(crate) fn new(block_hash: BlockHash, er: ExecutionResultV1) -> Self {
+        let mut execution_results = HashMap::new();
+        execution_results.insert(block_hash, er);
+        Self { execution_results }
+    }
+}
 impl From<DeployMetadataV1> for ExecutionResult {
     fn from(v1_results: DeployMetadataV1) -> Self {
         let v1_result = v1_results

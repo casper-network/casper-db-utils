@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use bincode::Error as BincodeError;
 use casper_types::{bytesrepr::ToBytes, execution::ExecutionResult};
 use serde::{Deserialize, Serialize};
 
@@ -62,17 +63,28 @@ impl ExecutionResultsStats {
     pub fn feed(&mut self, execution_results: Vec<ExecutionResult>) -> Result<(), Error> {
         // Calculate the length of the bincode serialized execution
         // results.
-        let bincode_encoded_execution_results_size = bincode::serialized_size(&execution_results)?;
+        let a: Result<Vec<u64>, BincodeError> = execution_results
+            .iter()
+            .map(|er| match er {
+                ExecutionResult::V1(execution_result_v1) => {
+                    bincode::serialized_size(&execution_result_v1)
+                }
+                ExecutionResult::V2(_) => Ok(er.serialized_length() as u64),
+            })
+            .collect();
+        let execution_results_sizes: Vec<u64> = a?;
+        let execution_results_size: u64 = execution_results_sizes.iter().sum();
+
         // Increment the frequency of the calculated size or create a new entry
         // with frequency 1.
         if let Some(count) = self
             .execution_results_size
-            .get_mut(&(bincode_encoded_execution_results_size as usize))
+            .get_mut(&(execution_results_size as usize))
         {
             *count += 1;
         } else {
             self.execution_results_size
-                .insert(bincode_encoded_execution_results_size as usize, 1);
+                .insert(execution_results_size as usize, 1);
         }
 
         // Calculate the length of the bytesrepr serialized execution
@@ -131,6 +143,19 @@ pub(crate) struct ExecutionResultsSummary {
     /// Statistics of counts of bytesrepr encoded chunks of execution results
     /// per block.
     pub(crate) chunks_statistics: CollectionStatistics,
+}
+
+#[cfg(test)]
+impl ExecutionResultsSummary {
+    pub(crate) fn new(
+        execution_results_size: CollectionStatistics,
+        chunks_statistics: CollectionStatistics,
+    ) -> Self {
+        Self {
+            execution_results_size,
+            chunks_statistics,
+        }
+    }
 }
 
 impl From<ExecutionResultsStats> for ExecutionResultsSummary {

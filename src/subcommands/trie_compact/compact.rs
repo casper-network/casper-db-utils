@@ -2,19 +2,26 @@ use std::{
     collections::HashSet,
     fs::{self, File, OpenOptions},
     path::Path,
-    sync::Arc,
 };
 
-use casper_types::Digest;
-use lmdb::{Environment, EnvironmentFlags};
+use casper_storage::{
+    block_store::{
+        BlockStoreProvider, DataReader,
+        lmdb::{IndexedLmdbBlockStore, LmdbBlockStore},
+        types::{BlockHeight, Tip},
+    },
+    data_access_layer::FlushRequest,
+    global_state::state::StateProvider,
+};
+use casper_types::{Block, Digest, ProtocolVersion};
 use log::info;
 
-use crate::common::db::{TRIE_STORE_FILE_NAME, blocks_index::BlocksIndex};
-
-use super::{
-    Error,
-    utils::{create_execution_engine, load_execution_engine},
+use crate::{
+    common::db::TRIE_STORE_FILE_NAME,
+    subcommands::trie_compact::utils::{create_data_access_layer, load_data_access_layer},
 };
+
+use super::Error;
 
 /// Defines behavior for opening destination trie store.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -139,60 +146,66 @@ pub fn trie_compact<P1: AsRef<Path>, P2: AsRef<Path>, P3: AsRef<Path>>(
     destination_trie_path: P3,
     dest_opt: DestinationOptions,
     max_db_size: usize,
+    enable_addressable_entity: bool,
 ) -> Result<(), Error> {
     validate_trie_paths(&source_trie_path, &destination_trie_path, dest_opt)?;
 
-    let (source_state, _env) =
-        load_execution_engine(source_trie_path, max_db_size, Digest::default(), true)
-            .map_err(Error::OpenSourceTrie)?;
+    let source_state = load_data_access_layer(
+        source_trie_path,
+        max_db_size,
+        Digest::default(),
+        true,
+        enable_addressable_entity,
+    )
+    .map_err(Error::LoadExecutionEngine)?;
 
-    let (destination_state, _env) =
-        create_execution_engine(destination_trie_path, max_db_size, true)
-            .map_err(Error::CreateDestTrie)?;
+    let destination_state = create_data_access_layer(
+        destination_trie_path,
+        max_db_size,
+        true,
+        enable_addressable_entity,
+    )
+    .map_err(Error::CreateDestTrie)?;
 
-    let env = Arc::new(
-        Environment::new()
-            .set_flags(
-                EnvironmentFlags::NO_SUB_DIR
-                    | EnvironmentFlags::NO_TLS
-                    | EnvironmentFlags::NO_READAHEAD,
-            )
-            .set_max_dbs(100)
-            .open(storage_path.as_ref())
-            .map_err(Error::LmdbOperation)?,
-    );
-    let mut index = BlocksIndex::new(env.clone());
-    index.initialize().map_err(Error::DbLayer)?;
+    // Create a separate lmdb for block store at chain_download_path.
+    let block_store =
+        LmdbBlockStore::new(storage_path.as_ref(), max_db_size).map_err(Error::OpenStorage)?;
+    let indexed_block_store =
+        IndexedLmdbBlockStore::new(block_store, None, ProtocolVersion::from_parts(0, 0, 0))
+            .map_err(Error::OpenStorage)?;
+    let ro_txn = indexed_block_store
+        .checkout_ro()
+        .map_err(Error::OpenStorage)?;
 
-    let mut block_header = match index.heighest_block_header()? {
-        Some(header) => header,
-        None => {
-            info!("No headers found in storage, exiting.");
-            return Ok(());
-        }
-    };
+    let mut block =
+        match DataReader::<Tip, Block>::read(&ro_txn, Tip).map_err(|err| Error::Storage(0, err))? {
+            Some(block) => block,
+            None => {
+                info!("No blocks found in storage, exiting.");
+                return Ok(());
+            }
+        };
     let mut visited_roots = HashSet::new();
     let mut block_height;
 
     info!("Copying state roots from source to destination.");
     loop {
-        block_height = block_header.height();
-        let state_root = *block_header.state_root_hash();
+        block_height = block.height();
+        let state_root = *block.take_header().state_root_hash();
         if !visited_roots.contains(&state_root) {
             super::helpers::copy_state_root(state_root, &source_state, &destination_state)
                 .map_err(|err| Error::CopyStateRoot(state_root, err))?;
-            let dest_env = destination_state.environment();
-            if dest_env.is_manual_sync_enabled() {
-                dest_env.sync().map_err(Error::LmdbOperation)?;
-            }
+            destination_state
+                .flush(FlushRequest::new())
+                .as_error()
+                .map_err(Error::GlobalState)?;
             visited_roots.insert(state_root);
         }
         if block_height == 0 {
             break;
         }
-        block_header = index
-            .read_block_header_by_height(block_height - 1)
-            .map_err(Error::DbLayer)?
+        block = DataReader::<BlockHeight, Block>::read(&ro_txn, block_height - 1)
+            .map_err(|storage_err| Error::Storage(block_height - 1, storage_err))?
             .ok_or(Error::MissingBlock(block_height - 1))?;
     }
     info!(

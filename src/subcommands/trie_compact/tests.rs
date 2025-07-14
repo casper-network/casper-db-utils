@@ -1,29 +1,32 @@
-/*
-#TODO
 use std::fs::{self, File};
 
-use lmdb::DatabaseFlags;
+use casper_storage::{
+    block_store::lmdb::LmdbBlockStore,
+    global_state::{
+        store::StoreExt,
+        transaction_source::{TransactionSource, lmdb::LmdbEnvironment},
+        trie::{PointerBlock, Trie},
+        trie_store::lmdb::LmdbTrieStore,
+    },
+};
+use lmdb::{DatabaseFlags, Transaction};
 use once_cell::sync::Lazy;
 use tempfile::{TempDir, tempdir};
 
-use casper_execution_engine::storage::{
-    store::StoreExt,
-    transaction_source::{Transaction, TransactionSource, lmdb::LmdbEnvironment},
-    trie::{Pointer, PointerBlock, Trie},
-    trie_store::lmdb::LmdbTrieStore,
+use casper_types::{
+    Digest, Pointer,
+    bytesrepr::{Bytes, ToBytes},
 };
-use casper_hashing::Digest;
-use casper_node::storage::Storage;
-use casper_types::bytesrepr::{Bytes, ToBytes};
 
 static DEFAULT_MAX_DB_SIZE: Lazy<usize> = Lazy::new(|| super::DEFAULT_MAX_DB_SIZE.parse().unwrap());
 
-use crate::common::db::TRIE_STORE_FILE_NAME;
+use crate::{
+    common::db::TRIE_STORE_FILE_NAME, subcommands::trie_compact::utils::create_data_access_layer,
+};
 
 use super::{
     Error,
     compact::{self, DestinationOptions},
-    utils::{create_execution_engine, create_storage, load_execution_engine},
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -112,9 +115,9 @@ fn create_test_trie_store() -> (TempDir, Vec<TestData<Bytes, Bytes>>) {
     (tmp_dir, data)
 }
 
-fn create_empty_test_storage() -> (TempDir, Storage) {
+fn create_empty_test_storage() -> (TempDir, LmdbBlockStore) {
     let tmp_dir = tempdir().unwrap();
-    let storage = create_storage(tmp_dir.as_ref()).unwrap();
+    let storage = LmdbBlockStore::new(tmp_dir.as_ref(), *DEFAULT_MAX_DB_SIZE).unwrap();
     (tmp_dir, storage)
 }
 
@@ -135,24 +138,22 @@ fn copy_state_root_roundtrip() {
         src_store.put_many(&mut txn, items).unwrap();
         txn.commit().unwrap();
     }
+    let source =
+        create_data_access_layer(src_tmp_dir.path(), *DEFAULT_MAX_DB_SIZE, true, false).unwrap();
 
-    let (source_state, _env) = load_execution_engine(
-        src_tmp_dir.path(),
-        *DEFAULT_MAX_DB_SIZE,
-        Digest::default(),
-        true,
-    )
-    .unwrap();
-
-    let (destination_state, dst_env) =
-        create_execution_engine(dst_tmp_dir.path(), *DEFAULT_MAX_DB_SIZE, true).unwrap();
+    let destination =
+        create_data_access_layer(dst_tmp_dir.path(), *DEFAULT_MAX_DB_SIZE, true, false).unwrap();
 
     // Copy from `node1`, the root of the created trie. All data should be copied.
-    super::helpers::copy_state_root(data[3].0, &source_state, &destination_state).unwrap();
+    super::helpers::copy_state_root(data[3].0, &source, &destination).unwrap();
 
-    let dst_store = LmdbTrieStore::new(&dst_env, None, DatabaseFlags::empty()).unwrap();
+    let dst_store = destination.state().trie_store();
     {
-        let txn = dst_env.create_read_write_txn().unwrap();
+        let txn = destination
+            .state()
+            .environment()
+            .create_read_write_txn()
+            .unwrap();
         let keys: Vec<_> = data.iter().map(|test_data| test_data.0).collect();
         let entries: Vec<Option<Trie<Bytes, Bytes>>> =
             dst_store.get_many(&txn, keys.iter()).unwrap();
@@ -196,23 +197,22 @@ fn check_no_extra_tries() {
         txn.commit().unwrap();
     }
 
-    let (source_state, _env) = load_execution_engine(
-        src_tmp_dir.path(),
-        *DEFAULT_MAX_DB_SIZE,
-        Digest::default(),
-        true,
-    )
-    .unwrap();
+    let source =
+        create_data_access_layer(src_tmp_dir.path(), *DEFAULT_MAX_DB_SIZE, true, false).unwrap();
 
-    let (destination_state, dst_env) =
-        create_execution_engine(dst_tmp_dir.path(), *DEFAULT_MAX_DB_SIZE, true).unwrap();
+    let destination =
+        create_data_access_layer(dst_tmp_dir.path(), *DEFAULT_MAX_DB_SIZE, true, false).unwrap();
 
     // Check with `node2`, which only has `leaf1` and `leaf2` as children in the constructed trie.
-    super::helpers::copy_state_root(data[4].0, &source_state, &destination_state).unwrap();
+    super::helpers::copy_state_root(data[4].0, &source, &destination).unwrap();
 
-    let dst_store = LmdbTrieStore::new(&dst_env, None, DatabaseFlags::empty()).unwrap();
+    let dst_store = destination.state().trie_store();
     {
-        let txn = dst_env.create_read_write_txn().unwrap();
+        let txn = destination
+            .state()
+            .environment()
+            .create_read_write_txn()
+            .unwrap();
         let data_keys: Vec<_> = data.iter().map(|test_data| test_data.0).collect();
         // `TestData` objects `[leaf2, leaf3, node2]` which should be included in the search result.
         let mut included_data = vec![data[1].clone(), data[2].clone(), data[4].clone()];
@@ -259,6 +259,7 @@ fn missing_source_trie() {
         "",
         DestinationOptions::New,
         *DEFAULT_MAX_DB_SIZE,
+        false,
     ) {
         Err(Error::InvalidPath(..)) => {}
         Err(err) => panic!("Unexpected error: {err}"),
@@ -276,6 +277,7 @@ fn missing_storage() {
         dst_dir,
         DestinationOptions::New,
         *DEFAULT_MAX_DB_SIZE,
+        false,
     ) {
         Err(Error::OpenStorage(_)) => {}
         Err(err) => panic!("Unexpected error: {err}"),
@@ -294,6 +296,7 @@ fn valid_empty_dst_with_destination_options() {
         &dst_dir,
         DestinationOptions::New,
         *DEFAULT_MAX_DB_SIZE,
+        false,
     ) {
         Ok(_) => {}
         Err(err) => panic!("Unexpected error: {err}"),
@@ -306,6 +309,7 @@ fn valid_empty_dst_with_destination_options() {
         &dst_dir,
         DestinationOptions::Append,
         *DEFAULT_MAX_DB_SIZE,
+        false,
     ) {
         Err(Error::InvalidDest(_)) => {}
         Err(err) => panic!("Unexpected error: {err}"),
@@ -318,6 +322,7 @@ fn valid_empty_dst_with_destination_options() {
         &dst_dir,
         DestinationOptions::Overwrite,
         *DEFAULT_MAX_DB_SIZE,
+        false,
     ) {
         Err(Error::InvalidDest(_)) => {}
         Err(err) => panic!("Unexpected error: {err}"),
@@ -341,6 +346,7 @@ fn valid_existing_dst_with_destination_options() {
         &dst_dir,
         DestinationOptions::New,
         *DEFAULT_MAX_DB_SIZE,
+        false,
     ) {
         Err(Error::InvalidDest(_)) => {}
         Err(err) => panic!("Unexpected error: {err}"),
@@ -353,6 +359,7 @@ fn valid_existing_dst_with_destination_options() {
         &dst_dir,
         DestinationOptions::Append,
         *DEFAULT_MAX_DB_SIZE,
+        false,
     ) {
         Ok(_) => {}
         Err(err) => panic!("Unexpected error: {err}"),
@@ -365,6 +372,7 @@ fn valid_existing_dst_with_destination_options() {
         &dst_dir,
         DestinationOptions::Overwrite,
         *DEFAULT_MAX_DB_SIZE,
+        false,
     ) {
         Ok(_) => {}
         Err(err) => panic!("Unexpected error: {err}"),
@@ -386,6 +394,7 @@ fn missing_dst_with_destination_options() {
         &dst_dir,
         DestinationOptions::New,
         *DEFAULT_MAX_DB_SIZE,
+        false,
     ) {
         Ok(_) => {}
         Err(err) => panic!("Unexpected error: {err}"),
@@ -398,6 +407,7 @@ fn missing_dst_with_destination_options() {
         &dst_dir,
         DestinationOptions::Append,
         *DEFAULT_MAX_DB_SIZE,
+        false,
     ) {
         Err(Error::InvalidDest(_)) => {}
         Err(err) => panic!("Unexpected error: {err}"),
@@ -410,10 +420,10 @@ fn missing_dst_with_destination_options() {
         &dst_dir,
         DestinationOptions::Overwrite,
         *DEFAULT_MAX_DB_SIZE,
+        false,
     ) {
         Err(Error::InvalidDest(_)) => {}
         Err(err) => panic!("Unexpected error: {err}"),
         Ok(_) => panic!("Unexpected successful trie compact"),
     }
 }
-*/

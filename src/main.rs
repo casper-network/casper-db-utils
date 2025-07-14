@@ -104,7 +104,7 @@ fn main() {
     };
 
     if let Err(run_err) = result {
-        error!("{}", run_err);
+        error!("{run_err}");
         process::exit(1);
     }
 }
